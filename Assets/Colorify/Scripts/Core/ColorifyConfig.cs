@@ -133,7 +133,14 @@ namespace Colorify
         public int normalHitsPerGridStep = 10;
         [Tooltip("Aciertos para llegar a la máxima dificultad de color")]
         public int normalHitsToMaxColorDifficulty = 90;
-        [Tooltip("Parecido de los colores en este modo (1 = base, 2 = el doble de parecidos)")]
+        [Tooltip("Probabilidad de que cada distractor sea un matiz del mismo color que el objetivo. 1 = todo el tablero es de " +
+                 "la misma familia: hay que diferenciar tonos, no buscar el color distinto")]
+        [Range(0, 1)] public float normalSameFamily = 1f;
+        [Tooltip("Distancia OKLab entre el objetivo y el distractor más parecido al empezar (0,02 ≈ apenas visible)")]
+        public float normalSeparationEasy = 0.09f;
+        [Tooltip("…y al llegar a la máxima dificultad")]
+        public float normalSeparationHard = 0.03f;
+        [Tooltip("Multiplicador extra de parecido en este modo (1 = sin cambio, 2 = el doble de parecidos)")]
         public float normalSimilarity = 1f;
 
         [Header("Continuar con anuncio (una vez por partida)")]

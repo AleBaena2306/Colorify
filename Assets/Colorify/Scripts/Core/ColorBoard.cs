@@ -34,17 +34,26 @@ namespace Colorify
         public static ColorBoard Generate(ColorifyConfig cfg, int size, float difficulty,
             System.Func<int, float> familyWeight, System.Random rng, float similarity = 1f)
         {
-            var board = new ColorBoard { size = size };
-            int count = size * size;
-
-            board.targetFamily = PickFamily(cfg, familyWeight, rng);
-            board.target = Shade(cfg, board.targetFamily, rng);
-            board.correctIndex = rng.Next(count);
-
             similarity = Mathf.Max(0.05f, similarity);
             float minSep = Mathf.Max(ColorifyConfig.MinSeparationFloor, Mathf.Lerp(cfg.minSeparationEasy, cfg.minSeparationHard, difficulty) / similarity);
             // Más parecido también significa más distractores del mismo tono que el objetivo
             float sameFamily = Mathf.Clamp01(1f - (1f - Mathf.Lerp(cfg.sameFamilyEasy, cfg.sameFamilyHard, difficulty)) / similarity);
+            return GenerateWith(cfg, size, minSep, sameFamily, familyWeight, rng);
+        }
+
+        // minSep: distancia OKLab mínima entre el objetivo y cualquier distractor.
+        // sameFamily: probabilidad de que un distractor sea un tono parecido al objetivo (1 = todos lo son:
+        // el tablero entero es de la misma familia de color y hay que diferenciar matices, no buscar uno distinto)
+        public static ColorBoard GenerateWith(ColorifyConfig cfg, int size, float minSep, float sameFamily,
+            System.Func<int, float> familyWeight, System.Random rng)
+        {
+            var board = new ColorBoard { size = size };
+            int count = size * size;
+            minSep = Mathf.Max(ColorifyConfig.MinSeparationFloor, minSep);
+
+            board.targetFamily = PickFamily(cfg, familyWeight, rng);
+            board.target = Shade(cfg, board.targetFamily, rng);
+            board.correctIndex = rng.Next(count);
 
             var placed = new List<OkColor> { board.target };
             for (int i = 0; i < count; i++)
@@ -62,7 +71,14 @@ namespace Colorify
                         : Shade(cfg, OtherFamily(cfg, board.targetFamily, rng), rng);
                     ok = OkColor.Distance(c, board.target) >= minSep && FarFromAll(c, placed, pairMin);
                 }
-                if (!ok) c = Shade(cfg, OtherFamily(cfg, board.targetFamily, rng), rng);
+                if (!ok)
+                {
+                    // Sin hueco: si el tablero es de una sola familia, se acepta un matiz parecido aunque se acerque
+                    // a otro distractor (nunca al objetivo); si no, un color de otra familia
+                    if (sameFamily >= 0.99f)
+                        for (int k = 0; k < 20 && OkColor.Distance(c = Near(cfg, board.target, minSep, rng), board.target) < minSep; k++) { }
+                    else c = Shade(cfg, OtherFamily(cfg, board.targetFamily, rng), rng);
+                }
                 placed.Add(c);
                 board.tiles.Add(c);
             }
@@ -92,15 +108,29 @@ namespace Colorify
             return OkColor.FromColor(OkColor.FromLch(Mathf.Clamp(l, 0.35f, 0.95f), c, h).ToColor());
         }
 
-        // Un color parecido al objetivo, a una distancia entre minSep y 1,6·minSep
+        // Un matiz del mismo color que el objetivo, a una distancia OKLab entre minSep y 1,7·minSep.
+        // La diferencia va sobre todo en luminosidad (más claro o más oscuro) y algo en croma y tono, sin salir
+        // de la paleta mate: así el tablero se lee como tonos de un mismo color, no como colores distintos.
+        // La parte en luminosidad (cfg.lightnessShare como mínimo) también ayuda a jugadores daltónicos.
         private static OkColor Near(ColorifyConfig cfg, OkColor target, float minSep, System.Random rng)
         {
-            float dist = minSep * Range(rng, 1.05f, 1.6f);
-            float dl = dist * cfg.lightnessShare * (rng.NextDouble() < 0.5 ? -1f : 1f);
-            float rest = Mathf.Sqrt(Mathf.Max(0f, dist * dist - dl * dl));
-            float ang = Range(rng, 0f, Mathf.PI * 2f);
-            var c = new OkColor(Mathf.Clamp(target.L + dl, 0.3f, 0.97f), target.a + rest * Mathf.Cos(ang), target.b + rest * Mathf.Sin(ang));
-            return OkColor.FromColor(c.ToColor());
+            float L = target.L, C = target.Chroma, hDeg = target.HueDeg;
+            OkColor c = target;
+            for (int tries = 0; tries < 12; tries++)
+            {
+                float dist = minSep * Range(rng, 1.0f, 1.5f);
+                // Reparto: casi todo en luminosidad, un poco en croma y como mucho ±6° de tono.
+                float share = Range(rng, Mathf.Max(0.7f, cfg.lightnessShare), 0.95f);
+                float dL = (rng.NextDouble() < 0.5 ? -1f : 1f) * dist * share;
+                if (L + dL < 0.34f || L + dL > 0.93f) dL = -dL;
+                float dC = (rng.NextDouble() < 0.5 ? -1f : 1f) * dist * Mathf.Sqrt(Mathf.Max(0f, 1f - share * share));
+                float l2 = Mathf.Clamp(L + dL, 0.32f, 0.94f);
+                float c2 = Mathf.Clamp(C + dC, Mathf.Min(C, 0.04f), C + 0.03f);
+                float h2 = hDeg + Range(rng, -6f, 6f);
+                c = OkColor.FromColor(OkColor.FromLch(l2, c2, h2).ToColor());
+                if (OkColor.Distance(c, target) >= minSep) return c;
+            }
+            return c;
         }
 
         private static int OtherFamily(ColorifyConfig cfg, int exclude, System.Random rng)

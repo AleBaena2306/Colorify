@@ -18,5 +18,7 @@ namespace Colorify
         public float HitBonus => Mathf.Max(cfg.normalHitBonusMin, cfg.normalHitBonus - cfg.normalBonusDecayPerHit * hits);
         public float MissPenalty => cfg.normalMissPenalty;
         public float MaxTime => cfg.normalMaxTime > 0 ? cfg.normalMaxTime : float.MaxValue;
+        // Separación mínima de color según los aciertos (cuanto más avanzas, más se parecen los matices)
+        public float MinSeparation => Mathf.Lerp(cfg.normalSeparationEasy, cfg.normalSeparationHard, ColorDifficulty) / Mathf.Max(0.05f, cfg.normalSimilarity);
     }
 }

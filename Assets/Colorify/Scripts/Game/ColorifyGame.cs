@@ -377,7 +377,7 @@ namespace Colorify
         private void NewBoard()
         {
             current = normal != null
-                ? ColorBoardGenerator.Generate(cfg, normal.GridSize, normal.ColorDifficulty, f => cfg.families[f].spawnWeight, rng, cfg.normalSimilarity)
+                ? ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight, rng)
                 : ColorBoardGenerator.Generate(run, rng);
             ShowBoard(current);
             boardShownAt = Time.time;
