@@ -123,6 +123,7 @@ namespace Colorify
             var img = Box(name, parent, color, 0.6f, raycast: true);
             img.rectTransform.sizeDelta = size;
             var b = img.gameObject.AddComponent<Button>();
+            b.targetGraphic = img;
             b.transition = Selectable.Transition.None;
             var lbl = Text("Label", img.transform, label, fontSize, Ink, black: true);
             Stretch(lbl.rectTransform);

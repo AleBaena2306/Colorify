@@ -485,7 +485,7 @@ namespace Colorify
             var label = v.cardsReroll.GetComponentInChildren<TMPro.TextMeshProUGUI>();
             label.text = left > 0 ? $"REROLL  ·  {left} LEFT THIS STAGE" : "NO REROLLS LEFT THIS STAGE";
             v.cardsReroll.interactable = left > 0;
-            v.cardsReroll.image.color = left > 0 ? ColorifyView.TitleColors[1] : UIKit.PaperDark;
+            v.cardsReroll.GetComponent<Image>().color = left > 0 ? ColorifyView.TitleColors[1] : UIKit.PaperDark;
         }
 
         // Cambia las 3 cartas de esta elección por otras 3 (uno por plazo)
