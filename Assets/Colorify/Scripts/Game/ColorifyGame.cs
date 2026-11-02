@@ -1,0 +1,726 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
+namespace Colorify
+{
+    // Bucle principal: menú (con el tablero jugando solo detrás) → cuenta atrás → ronda → cartas →
+    // siguiente ronda (jugar o saltar) → … → fin de partida. Se crea solo al arrancar la escena.
+    public class ColorifyGame : MonoBehaviour
+    {
+        private enum State { Menu, Countdown, Playing, Resolving, Cards, NextRound, Paused, GameOver, Victory }
+
+        private ColorifyConfig cfg;
+        private ColorifyView v;
+        private Juice juice;
+        private Sfx sfx;
+        private Ads ads;
+        private SaveData save;
+        private readonly System.Random rng = new System.Random();
+
+        private State state = State.Menu;
+        private State stateBeforePause;
+        private RunState run;
+        private ColorBoard current;
+        private float timeLeft, roundTime, boardShownAt, displayedRoundScore, lastTickSecond;
+        private int hitsThisRound, wrongThisRound;
+        private float runStartedAt, pausedAt, pausedTotal;
+        private bool continueOffered;
+        private Coroutine attract;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void Bootstrap()
+        {
+            if (FindAnyObjectByType<ColorifyGame>() != null) return;
+            new GameObject("Colorify").AddComponent<ColorifyGame>();
+        }
+
+        private void Awake()
+        {
+            Application.targetFrameRate = 60;
+            cfg = ColorifyConfig.Load();
+            save = SaveData.Load();
+            Sfx.Enabled = save.soundOn;
+            Haptics.Enabled = save.vibrationOn;
+
+            if (Camera.main != null) Camera.main.backgroundColor = UIKit.Paper;
+            v = new ColorifyView(transform);
+            juice = gameObject.AddComponent<Juice>();
+            juice.Init(v.fx);
+            sfx = Sfx.Create(transform);
+            ads = Ads.Create(transform);
+            foreach (var t in v.tiles) t.onPress = OnTilePressed;
+
+            BuildOverlays();
+            ShowMenu(instant: true);
+        }
+
+        // =====================================================================
+        // Pantallas
+        // =====================================================================
+
+        private void BuildOverlays()
+        {
+            // --- Menú ---
+            v.menu = v.Overlay("Menu", 0.78f);
+            var title = UIKit.Text("Title", v.menu.transform, ColorifyView.RainbowTitle("COLORIFY"), 96, UIKit.Ink, black: true);
+            UIKit.Place(title.rectTransform, 0.5f, 0.5f, new Vector2(1000, 130), new Vector2(0, 400));
+            var tag = UIKit.Text("Tagline", v.menu.transform, "Tap the matching color. Fast.", 46, UIKit.InkSoft);
+            UIKit.Place(tag.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 300));
+            v.menuBest = UIKit.Text("Best", v.menu.transform, "", 50, UIKit.Ink, black: true);
+            UIKit.Place(v.menuBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 190));
+            var play = UIKit.Button("Play", v.menu.transform, "PLAY", ColorifyView.TitleColors[3], new Vector2(560, 190), StartRun, 92);
+            UIKit.Place((RectTransform)play.transform, 0.5f, 0.5f, new Vector2(560, 190), new Vector2(0, 0));
+            var best = UIKit.Button("BestRuns", v.menu.transform, "BEST RUNS", ColorifyView.TitleColors[1], new Vector2(420, 120), ShowHistory, 50);
+            UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(-225, -180));
+            var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(420, 120), ToggleSound, 50);
+            UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(225, -180));
+            v.menuSoundLabel = sound.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+
+            // --- Pausa ---
+            v.pause = v.Overlay("Pause");
+            var pt = UIKit.Text("Title", v.pause.transform, "PAUSED", 120, UIKit.Ink, black: true);
+            UIKit.Place(pt.rectTransform, 0.5f, 0.5f, new Vector2(900, 160), new Vector2(0, 360));
+            var resume = UIKit.Button("Resume", v.pause.transform, "RESUME", ColorifyView.TitleColors[2], new Vector2(560, 160), Resume, 70);
+            UIKit.Place((RectTransform)resume.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, 150));
+            var ps = UIKit.Button("Sound", v.pause.transform, "", ColorifyView.TitleColors[0], new Vector2(560, 120), ToggleSound, 50);
+            UIKit.Place((RectTransform)ps.transform, 0.5f, 0.5f, new Vector2(560, 120), new Vector2(0, -10));
+            v.pauseSoundLabel = ps.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            var pv = UIKit.Button("Vibration", v.pause.transform, "", ColorifyView.TitleColors[1], new Vector2(560, 120), ToggleVibration, 50);
+            UIKit.Place((RectTransform)pv.transform, 0.5f, 0.5f, new Vector2(560, 120), new Vector2(0, -150));
+            v.pauseVibrationLabel = pv.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            var quit = UIKit.Button("Quit", v.pause.transform, "QUIT RUN", ColorifyView.TitleColors[5], new Vector2(560, 120), QuitRun, 50);
+            UIKit.Place((RectTransform)quit.transform, 0.5f, 0.5f, new Vector2(560, 120), new Vector2(0, -330));
+
+            var pauseBtn = UIKit.Button("PauseButton", v.game, "II", UIKit.PaperDark, new Vector2(120, 110), Pause, 54);
+            UIKit.Place((RectTransform)pauseBtn.transform, 0f, 1f, new Vector2(120, 110), new Vector2(105, -110));
+
+            // --- Cartas ---
+            v.cards = v.Overlay("Cards");
+            v.cardsTitle = UIKit.Text("Title", v.cards.transform, "ROUND CLEAR", 84, UIKit.Ink, black: true);
+            UIKit.Place(v.cardsTitle.rectTransform, 0.5f, 0.5f, new Vector2(1000, 110), new Vector2(0, 780));
+            v.cardsSub = UIKit.Text("Sub", v.cards.transform, "", 42, UIKit.InkSoft);
+            UIKit.Place(v.cardsSub.rectTransform, 0.5f, 0.5f, new Vector2(1000, 110), new Vector2(0, 680));
+            v.cardsRow = UIKit.Rect("Row", v.cards.transform);
+            UIKit.Place(v.cardsRow, 0.5f, 0.5f, new Vector2(960, 900), new Vector2(0, 160));
+            var oddsLabel = UIKit.Text("OddsLabel", v.cards.transform, "YOUR COLORS  ·  chance to be the target  ·  points per hit", 30, UIKit.InkSoft, black: true);
+            UIKit.Place(oddsLabel.rectTransform, 0.5f, 0.5f, new Vector2(1000, 50), new Vector2(0, -345));
+            v.cardsOdds = UIKit.Rect("Odds", v.cards.transform);
+            UIKit.Place(v.cardsOdds, 0.5f, 0.5f, new Vector2(960, 130), new Vector2(0, -440));
+            v.cardsReroll = UIKit.Button("Reroll", v.cards.transform, "REROLL", ColorifyView.TitleColors[1], new Vector2(620, 120), RerollCards, 46);
+            UIKit.Place((RectTransform)v.cardsReroll.transform, 0.5f, 0.5f, new Vector2(620, 120), new Vector2(0, -610));
+
+            // --- Siguiente ronda ---
+            v.nextRound = v.Overlay("NextRound");
+            v.nextBoss = UIKit.Text("Boss", v.nextRound.transform, "BOSS ROUND", 52, ColorifyView.TitleColors[5], black: true);
+            UIKit.Place(v.nextBoss.rectTransform, 0.5f, 0.5f, new Vector2(900, 70), new Vector2(0, 470));
+            v.nextTitle = UIKit.Text("Title", v.nextRound.transform, "", 130, UIKit.Ink, black: true);
+            UIKit.Place(v.nextTitle.rectTransform, 0.5f, 0.5f, new Vector2(1000, 160), new Vector2(0, 360));
+            v.nextInfo = UIKit.Text("Info", v.nextRound.transform, "", 52, UIKit.InkSoft);
+            UIKit.Place(v.nextInfo.rectTransform, 0.5f, 0.5f, new Vector2(1000, 240), new Vector2(0, 160));
+            v.nextPlay = UIKit.Button("Play", v.nextRound.transform, "PLAY", ColorifyView.TitleColors[3], new Vector2(560, 170), PlayNextRound, 80);
+            UIKit.Place((RectTransform)v.nextPlay.transform, 0.5f, 0.5f, new Vector2(560, 170), new Vector2(0, -80));
+            v.nextSkip = UIKit.Button("Skip", v.nextRound.transform, "SKIP · +1 CARD PICK LATER", UIKit.PaperDark, new Vector2(760, 120), SkipRound, 44);
+            UIKit.Place((RectTransform)v.nextSkip.transform, 0.5f, 0.5f, new Vector2(760, 120), new Vector2(0, -260));
+
+            // --- Fin de partida ---
+            v.gameOver = v.Overlay("GameOver");
+            var got = UIKit.Text("Title", v.gameOver.transform, "RUN OVER", 120, UIKit.Ink, black: true);
+            UIKit.Place(got.rectTransform, 0.5f, 0.5f, new Vector2(1000, 150), new Vector2(0, 640));
+            v.overScore = UIKit.Text("Score", v.gameOver.transform, "", 150, UIKit.Ink, black: true);
+            UIKit.Place(v.overScore.rectTransform, 0.5f, 0.5f, new Vector2(1000, 180), new Vector2(0, 470));
+            v.overBest = UIKit.Text("Best", v.gameOver.transform, "", 48, UIKit.InkSoft, black: true);
+            UIKit.Place(v.overBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 360));
+            v.overInfo = UIKit.Text("Info", v.gameOver.transform, "", 44, UIKit.InkSoft);
+            UIKit.Place(v.overInfo.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 280));
+            v.overCardsRow = UIKit.Rect("Cards", v.gameOver.transform);
+            UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
+            v.overContinue = UIKit.Button("Continue", v.gameOver.transform, "WATCH AD · ONE MORE TRY", ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
+            UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(820, 150), new Vector2(0, 10));
+            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { FinishRun("lose"); StartRun(); }, 70);
+            UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, -180));
+            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { FinishRun("lose"); ShowMenu(); }, 50);
+            UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -350));
+
+            // --- Victoria (primera ronda 8×8 superada) ---
+            v.victory = v.Overlay("Victory");
+            var vt = UIKit.Text("Title", v.victory.transform, ColorifyView.RainbowTitle("YOU WIN!"), 150, UIKit.Ink, black: true);
+            UIKit.Place(vt.rectTransform, 0.5f, 0.5f, new Vector2(1000, 200), new Vector2(0, 360));
+            var vs = UIKit.Text("Sub", v.victory.transform, "You cleared your first 8×8 round.\nThe run goes on: how far can you get?", 50, UIKit.InkSoft);
+            UIKit.Place(vs.rectTransform, 0.5f, 0.5f, new Vector2(960, 200), new Vector2(0, 170));
+            var keep = UIKit.Button("Keep", v.victory.transform, "KEEP GOING", ColorifyView.TitleColors[3], new Vector2(600, 170), AfterVictory, 70);
+            UIKit.Place((RectTransform)keep.transform, 0.5f, 0.5f, new Vector2(600, 170), new Vector2(0, -60));
+
+            // --- Mejores partidas (local) ---
+            v.history = v.Overlay("History");
+            var ht = UIKit.Text("Title", v.history.transform, "BEST RUNS", 110, UIKit.Ink, black: true);
+            UIKit.Place(ht.rectTransform, 0.5f, 1f, new Vector2(1000, 150), new Vector2(0, -150));
+            v.historyList = UIKit.Rect("List", v.history.transform);
+            UIKit.Place(v.historyList, 0.5f, 0.5f, new Vector2(1000, 1300), new Vector2(0, -20));
+            var back = UIKit.Button("Back", v.history.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), HideHistory, 50);
+            UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
+
+            RefreshToggles();
+        }
+
+        private void Show(CanvasGroup cg) { cg.transform.SetAsLastSibling(); juice.Fade(cg, 1f, 0.18f); }
+        private void Hide(CanvasGroup cg, bool instant = false)
+        {
+            if (instant) { cg.alpha = 0f; cg.interactable = cg.blocksRaycasts = false; cg.gameObject.SetActive(false); }
+            else if (cg.gameObject.activeSelf) juice.Fade(cg, 0f, 0.15f);
+        }
+
+        // =====================================================================
+        // Menú (el tablero juega solo detrás)
+        // =====================================================================
+
+        private void ShowMenu(bool instant = false)
+        {
+            state = State.Menu;
+            run = null;
+            foreach (var cg in new[] { v.pause, v.cards, v.nextRound, v.gameOver, v.victory, v.history }) Hide(cg, instant);
+            v.menuBest.text = save.bestScore > 0 ? "BEST  " + UIKit.Thousands(save.bestScore) : "";
+            v.roundLabel.text = "";
+            v.scoreText.text = "";
+            v.totalText.text = "";
+            v.multText.text = "x1";
+            SetTimer(1f);
+            if (instant) { v.menu.gameObject.SetActive(true); v.menu.alpha = 1f; v.menu.interactable = v.menu.blocksRaycasts = true; }
+            else Show(v.menu);
+            if (attract != null) StopCoroutine(attract);
+            attract = StartCoroutine(AttractLoop());
+        }
+
+        private IEnumerator AttractLoop()
+        {
+            // Antes de jugar, el tablero solo muestra grises: los colores aparecen al empezar la ronda
+            while (state == State.Menu)
+            {
+                ShowBoard(ColorBoardGenerator.Grey(cfg.startGridSize, rng));
+                yield return new WaitForSecondsRealtime(1.4f);
+            }
+        }
+
+        private void ShowHistory()
+        {
+            sfx.Play(Sfx.Id.Click);
+            for (int i = v.historyList.childCount - 1; i >= 0; i--) Destroy(v.historyList.GetChild(i).gameObject);
+            if (save.topRuns.Count == 0)
+            {
+                var empty = UIKit.Text("Empty", v.historyList, "No runs yet. Go play!", 50, UIKit.InkSoft);
+                UIKit.Place(empty.rectTransform, 0.5f, 1f, new Vector2(900, 80), new Vector2(0, -60));
+            }
+            for (int i = 0; i < save.topRuns.Count; i++)
+            {
+                var r = save.topRuns[i];
+                var row = UIKit.Box("Run" + i, v.historyList, i == 0 ? UIKit.PaperDark : UIKit.WithAlpha(UIKit.PaperDark, 0.5f), 0.8f);
+                UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(980, 120), new Vector2(0, -60 - i * 130));
+                var label = UIKit.Text("Label", row.transform, $"#{i + 1}  {UIKit.Thousands(r.score)}", 46, UIKit.Ink, black: true);
+                label.alignment = TMPro.TextAlignmentOptions.Left;
+                UIKit.Place(label.rectTransform, 0f, 0.5f, new Vector2(420, 100), new Vector2(240, 14));
+                var info = UIKit.Text("Info", row.transform, $"Round {r.stage}-{r.round}{(r.victory ? " · WIN" : "")}", 30, UIKit.InkSoft);
+                info.alignment = TMPro.TextAlignmentOptions.Left;
+                UIKit.Place(info.rectTransform, 0f, 0.5f, new Vector2(420, 50), new Vector2(240, -30));
+                var cardsRow = UIKit.Rect("Cards", row.transform);
+                UIKit.Place(cardsRow, 1f, 0.5f, new Vector2(520, 60), new Vector2(-280, 0));
+                ColorifyView.MiniCards(cardsRow, r.cards.Count > 7 ? r.cards.GetRange(r.cards.Count - 7, 7) : r.cards, cfg, 52f);
+            }
+            Show(v.history);
+        }
+
+        private void HideHistory() { sfx.Play(Sfx.Id.Click); Hide(v.history); }
+
+        // =====================================================================
+        // Partida
+        // =====================================================================
+
+        private void StartRun()
+        {
+            sfx.Play(Sfx.Id.Click);
+            if (attract != null) { StopCoroutine(attract); attract = null; }
+            foreach (var cg in new[] { v.menu, v.gameOver, v.history }) Hide(cg);
+            run = new RunState(cfg);
+            continueOffered = false;
+            runStartedAt = Time.realtimeSinceStartup;
+            pausedTotal = 0f;
+            Analytics.Log("game_start", ("mode", "run"), ("level_id", "run"));
+            StartCoroutine(CountdownThen(BeginRound));
+        }
+
+        private IEnumerator CountdownThen(System.Action next)
+        {
+            state = State.Countdown;
+            RefreshHud(instant: true);
+            v.board.gameObject.SetActive(true);
+            if (run != null) ShowBoard(ColorBoardGenerator.Grey(run.GridSize, rng));
+            for (int i = cfg.countdownSeconds; i > 0; i--)
+            {
+                v.countdownText.text = i.ToString();
+                juice.PopIn(v.countdownText.transform, 0f, 0.3f, 1.6f);
+                sfx.Play(Sfx.Id.Tick, 1f, 0.8f);
+                for (float t = 0; t < 0.6f; t += Time.unscaledDeltaTime) { while (state == State.Paused) yield return null; yield return null; }
+            }
+            v.countdownText.text = "";
+            sfx.Play(Sfx.Id.Go);
+            next();
+        }
+
+        private void BeginRound()
+        {
+            roundTime = run.RoundTime;
+            timeLeft = roundTime;
+            hitsThisRound = wrongThisRound = 0;
+            displayedRoundScore = run.roundScore;
+            lastTickSecond = -1;
+            NewBoard();
+            state = State.Playing;
+            RefreshHud(instant: true);
+        }
+
+        private void NewBoard()
+        {
+            current = ColorBoardGenerator.Generate(run, rng);
+            ShowBoard(current);
+            boardShownAt = Time.time;
+        }
+
+        private void ShowBoard(ColorBoard b)
+        {
+            v.LayoutTiles(b.size);
+            for (int i = 0; i < b.tiles.Count; i++)
+            {
+                v.tiles[i].image.color = b.tiles[i].ToColor();
+                juice.PopIn(v.tiles[i].transform, 0f, 0.12f, 0.88f);
+            }
+            v.swatch.color = b.TargetColor;
+            juice.Punch(v.swatch.transform, 0.08f, 0.18f);
+        }
+
+        private void OnTilePressed(Tile tile)
+        {
+            if (state != State.Playing || current == null) return;
+            if (tile.index == current.correctIndex) Hit(tile);
+            else Miss(tile);
+        }
+
+        private void Hit(Tile tile)
+        {
+            float reaction = Time.time - boardShownAt;
+            int fam = current.targetFamily;
+            int pts = run.PointsFor(fam, reaction);
+            run.roundScore += pts;
+            run.totalScore += pts;
+            run.hits++;
+            hitsThisRound++;
+            if (reaction < run.bestReaction) run.bestReaction = reaction;
+
+            bool warm = cfg.families[fam].basePoints >= 45;
+            Color col = current.TargetColor;
+            juice.Punch(tile.transform, 0.2f);
+            juice.Burst(tile.transform.position, col, warm ? 16 : 8, warm ? 1200f : 800f);
+            juice.FloatText(tile.transform.position, "+" + UIKit.Thousands(pts), UIKit.Ink, warm ? 90f : 70f);
+            if (warm) juice.Shake(v.board, 10f, 0.15f);
+            sfx.Play(warm ? Sfx.Id.HitWarm : Sfx.Id.Hit, 1f + 0.025f * Mathf.Min(hitsThisRound, 20));
+            Haptics.Pulse(warm ? 25 : 10);
+
+            if (run.roundScore >= run.Target) { StartCoroutine(RoundCleared()); return; }
+            NewBoard();
+        }
+
+        private void Miss(Tile tile)
+        {
+            run.wrongTaps++;
+            wrongThisRound++;
+            float penalty = roundTime * cfg.wrongTapPenaltyFraction;
+            timeLeft -= penalty;
+            juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
+            juice.Shake(v.board, 8f, 0.2f);
+            juice.ColorFlash(v.timerFill, UIKit.Danger, 0.35f);
+            juice.FloatText(v.timerBack.transform.position, "-" + penalty.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s", UIKit.Danger, 64f, 90f);
+            sfx.Play(Sfx.Id.Wrong);
+            Haptics.Pulse(50);
+        }
+
+        private void Update()
+        {
+            if (PausePressed())
+            {
+                if (state == State.Paused) Resume();
+                else if (state == State.Playing || state == State.Countdown) Pause();
+            }
+
+            if (state == State.Playing)
+            {
+                timeLeft -= Mathf.Min(Time.deltaTime, 0.1f);
+#if UNITY_EDITOR
+                if (KeyPressed("n")) { run.roundScore = run.Target; StartCoroutine(RoundCleared()); return; }   // trampa: superar ronda
+                if (KeyPressed("k")) timeLeft = 0f;                                                                 // trampa: perder
+#endif
+                int sec = Mathf.CeilToInt(timeLeft);
+                if (timeLeft > 0 && timeLeft < 5f && sec != (int)lastTickSecond)
+                {
+                    lastTickSecond = sec;
+                    sfx.Play(Sfx.Id.Tick, 1.2f, 0.7f);
+                    juice.Punch(v.timerBack.transform, 0.06f, 0.15f);
+                }
+                if (timeLeft <= 0f) { timeLeft = 0f; StartCoroutine(RoundFailed()); }
+            }
+
+            if (run != null && state != State.Menu) RefreshHud(instant: false);
+        }
+
+        private void RefreshHud(bool instant)
+        {
+            if (run == null) return;
+            displayedRoundScore = instant ? run.roundScore : Mathf.Lerp(displayedRoundScore, run.roundScore, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
+            if (Mathf.Abs(displayedRoundScore - run.roundScore) < 1f) displayedRoundScore = run.roundScore;
+            v.scoreText.text = $"{UIKit.Thousands((long)displayedRoundScore)} <size=60%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>/ {UIKit.Thousands((long)run.Target)}</color></size>";
+            v.totalText.text = "TOTAL " + UIKit.Thousands(run.totalScore);
+            v.roundLabel.text = "ROUND " + run.RoundLabel + (run.IsBossRound ? " · BOSS" : "");
+            v.multText.text = "x" + run.Multiplier.ToString("0.#");
+            float frac = roundTime > 0 ? Mathf.Clamp01(timeLeft / roundTime) : 1f;
+            if (state != State.Playing && state != State.Paused) frac = 1f;
+            SetTimer(frac);
+        }
+
+        private void SetTimer(float frac)
+        {
+            var fr = v.timerFill.rectTransform;
+            fr.anchorMax = new Vector2(Mathf.Max(0.02f, frac), 1f);
+            fr.offsetMin = fr.offsetMax = Vector2.zero;
+            bool low = frac < 0.25f && state == State.Playing;
+            if (low) v.timerFill.color = Color.Lerp(UIKit.Danger, UIKit.Ink, 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 14f));
+            else v.timerFill.color = UIKit.Ink;
+        }
+
+        // =====================================================================
+        // Fin de ronda
+        // =====================================================================
+
+        private IEnumerator RoundCleared()
+        {
+            state = State.Resolving;
+            float left = timeLeft;
+            bool fast = left / roundTime >= cfg.fastClearFraction;
+            run.streak = fast ? run.streak + 1 : 0;
+
+            Analytics.Log("round_end", ("stage", run.stage), ("round", run.roundInStage + 1), ("grid", run.GridSize),
+                ("result", "clear"), ("fast", fast), ("time_left", left), ("round_score", (long)run.roundScore),
+                ("target", (long)run.Target), ("hits", hitsThisRound), ("wrong_taps", wrongThisRound), ("mult", run.Multiplier));
+
+            sfx.Play(Sfx.Id.Clear);
+            Haptics.Pulse(40);
+            v.stampText.text = "CLEAR!";
+            v.stampSub.text = fast ? $"FAST!  MULT x{run.Multiplier:0.#}" : "Too slow: mult streak reset";
+            juice.PopIn(v.stampText.transform, 0f, 0.35f, 1.8f);
+            juice.PopIn(v.stampSub.transform, 0.15f, 0.3f, 0.5f);
+            juice.Punch(v.multChip.transform, fast ? 0.35f : 0.1f, 0.35f);
+            for (int i = 0; i < current.tiles.Count; i++)
+                juice.Burst(v.tiles[i].transform.position, v.tiles[i].image.color, 3, 700f, 22f);
+            yield return new WaitForSecondsRealtime(1.1f);
+            v.stampText.text = v.stampSub.text = "";
+
+            if (!run.victoryReached && run.GridSize >= cfg.maxGridSize)
+            {
+                run.victoryReached = true;
+                Analytics.Log("run_victory", ("stage", run.stage), ("total_score", run.totalScore), ("duration_sec", RunDuration()));
+                state = State.Victory;
+                sfx.Play(Sfx.Id.Victory);
+                Show(v.victory);
+                yield break;
+            }
+            ShowCards();
+        }
+
+        private void AfterVictory() { sfx.Play(Sfx.Id.Click); Hide(v.victory); ShowCards(); }
+
+        // Tras superar una ronda: 1 elección normal + 1 extra por cada ronda saltada desde la última pantalla de cartas.
+        // Cada elección es una oferta nueva de 3 cartas, de la que se coge una.
+        private int picksTotal, picksDone;
+
+        private void ShowCards()
+        {
+            picksTotal = 1 + run.pendingExtraPicks;
+            picksDone = 0;
+            run.pendingExtraPicks = 0;
+            OfferNextPick();
+        }
+
+        private void OfferNextPick()
+        {
+            state = State.Cards;
+            v.cardsTitle.text = "ROUND " + run.RoundLabel + " CLEAR";
+            v.cardsSub.text = picksTotal > 1
+                ? $"Pick one upgrade  ·  {picksDone + 1} of {picksTotal}" + (picksDone > 0 ? "\n<size=80%>Extra pick from a skipped round</size>" : "")
+                : "Pick one upgrade";
+            DealOffer();
+            if (picksDone == 0) Show(v.cards);
+            else juice.Punch(v.cardsSub.transform, 0.15f);
+        }
+
+        private void DealOffer()
+        {
+            for (int i = v.cardsRow.childCount - 1; i >= 0; i--) Destroy(v.cardsRow.GetChild(i).gameObject);
+            var offer = run.OfferCards(rng);
+            string source = picksDone == 0 ? "choice" : "skip_extra";
+            var size = new Vector2(960, 260);
+            for (int i = 0; i < offer.Count; i++)
+            {
+                var card = offer[i];
+                var b = ColorifyView.CardButton(v.cardsRow, card, run, size, () => PickCard(card, source));
+                UIKit.Place((RectTransform)b.transform, 0.5f, 1f, size, new Vector2(0, -size.y * 0.5f - i * (size.y + 30)));
+                juice.PopIn(b.transform, 0.08f * i, 0.3f, 0.7f);
+            }
+            ColorifyView.ColorOdds(v.cardsOdds, run);
+            RefreshReroll();
+        }
+
+        private void RefreshReroll()
+        {
+            int left = run.RerollsLeft;
+            var label = v.cardsReroll.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            label.text = left > 0 ? $"REROLL  ·  {left} LEFT THIS STAGE" : "NO REROLLS LEFT THIS STAGE";
+            v.cardsReroll.interactable = left > 0;
+            v.cardsReroll.image.color = left > 0 ? ColorifyView.TitleColors[1] : UIKit.PaperDark;
+        }
+
+        // Cambia las 3 cartas de esta elección por otras 3 (uno por plazo)
+        private void RerollCards()
+        {
+            if (state != State.Cards || !run.TryUseReroll()) return;
+            sfx.Play(Sfx.Id.Card, 0.85f);
+            Analytics.Log("card_reroll", ("stage", run.stage), ("round", run.roundInStage + 1));
+            DealOffer();
+        }
+
+        private void PickCard(Card card, string source)
+        {
+            if (state != State.Cards) return;
+            sfx.Play(Sfx.Id.Card);
+            run.ApplyCard(card);
+            Analytics.Log("card_pick", ("card_id", card.Id(cfg)), ("card_type", card.type.ToString()),
+                ("stage", run.stage), ("source", source));
+            picksDone++;
+            if (picksDone < picksTotal) { OfferNextPick(); return; }
+            run.AdvanceRound();
+            Hide(v.cards);
+            ShowNextRound();
+        }
+
+        private void ShowNextRound(string notice = null)
+        {
+            state = State.NextRound;
+            v.nextTitle.text = "ROUND " + run.RoundLabel;
+            v.nextBoss.text = run.IsBossRound ? "BOSS ROUND" : "";
+            int n = run.GridSize;
+            string info = $"Target  <b>{UIKit.Thousands((long)run.Target)}</b>\n{n}×{n} grid · {Mathf.RoundToInt(run.RoundTime)}s · mult x{run.Multiplier:0.#}";
+            if (run.pendingExtraPicks > 0)
+                info += $"\n<b>+{run.pendingExtraPicks} extra card pick{(run.pendingExtraPicks > 1 ? "s" : "")}</b> after your next clear";
+            if (!string.IsNullOrEmpty(notice)) info = notice + "\n" + info;
+            v.nextInfo.text = info;
+            v.nextSkip.gameObject.SetActive(run.CanSkip);
+            Show(v.nextRound);
+        }
+
+        private void PlayNextRound()
+        {
+            if (state != State.NextRound) return;
+            sfx.Play(Sfx.Id.Click);
+            Hide(v.nextRound);
+            StartCoroutine(CountdownThen(BeginRound));
+        }
+
+        // Saltar: no juegas la ronda y no hay cartas ahora; a cambio, tras la siguiente ronda superada eliges una carta
+        // extra (de una oferta nueva de 3) por cada ronda saltada. Si pierdes antes, las elecciones guardadas se pierden.
+        // El multiplicador se conserva.
+        private void SkipRound()
+        {
+            if (state != State.NextRound || !run.CanSkip) return;
+            Analytics.Log("round_end", ("stage", run.stage), ("round", run.roundInStage + 1), ("grid", run.GridSize),
+                ("result", "skip"), ("mult", run.Multiplier));
+            run.pendingExtraPicks++;
+            run.AdvanceRound();
+            sfx.Play(Sfx.Id.Card);
+            ShowNextRound("Round skipped");
+            juice.Punch(v.nextTitle.transform, 0.2f);
+        }
+
+        private IEnumerator RoundFailed()
+        {
+            state = State.Resolving;
+            Analytics.Log("round_end", ("stage", run.stage), ("round", run.roundInStage + 1), ("grid", run.GridSize),
+                ("result", "fail"), ("round_score", (long)run.roundScore), ("target", (long)run.Target),
+                ("hits", hitsThisRound), ("wrong_taps", wrongThisRound), ("mult", run.Multiplier));
+            sfx.Play(Sfx.Id.Lose);
+            Haptics.Pulse(80);
+            juice.Shake(v.board, 26f, 0.4f);
+            v.stampText.text = "TIME!";
+            juice.PopIn(v.stampText.transform, 0f, 0.35f, 1.8f);
+            yield return new WaitForSecondsRealtime(0.9f);
+            v.stampText.text = "";
+            ShowGameOver();
+        }
+
+        private void ShowGameOver()
+        {
+            state = State.GameOver;
+            bool isRecord = run.totalScore > save.bestScore;
+            v.overScore.text = UIKit.Thousands(run.totalScore);
+            v.overBest.text = isRecord ? "NEW BEST!" : "BEST " + UIKit.Thousands(save.bestScore);
+            v.overInfo.text = $"Reached round {run.RoundLabel}" + (run.victoryReached ? " · WIN" : "");
+            var ids = new List<string>();
+            foreach (var c in run.cards) ids.Add(c.Id(cfg));
+            ColorifyView.MiniCards(v.overCardsRow, ids, cfg);
+
+            bool nearRecord = save.bestScore > 0 && run.totalScore >= save.bestScore * cfg.continueNearRecordFraction;
+            bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
+            bool offer = !run.continueUsed && ads.IsReady && (nearRecord || everyFew);
+            v.overContinue.gameObject.SetActive(offer);
+            if (offer) continueOffered = true;
+            Show(v.gameOver);
+            if (isRecord) juice.Punch(v.overBest.transform, 0.3f, 0.4f);
+            // Sin oferta de continuar, la partida se guarda ya (por si el jugador cierra la pestaña aquí)
+            if (!offer) FinishRun("lose");
+        }
+
+        private void ContinueWithAd()
+        {
+            if (state != State.GameOver || run == null || run.continueUsed) return;
+            v.overContinue.interactable = false;
+            ads.ShowRewarded("continue", rewarded =>
+            {
+                v.overContinue.interactable = true;
+                Analytics.Log("continue_offer", ("accepted", true), ("rewarded", rewarded), ("stage", run.stage));
+                if (!rewarded) { v.overContinue.gameObject.SetActive(false); return; }
+                run.continueUsed = true;
+                Hide(v.gameOver);
+                // Se repite la ronda con el tiempo completo y conservando los puntos ya hechos en ella
+                StartCoroutine(CountdownThen(() =>
+                {
+                    roundTime = run.RoundTime;
+                    timeLeft = roundTime;
+                    lastTickSecond = -1;
+                    NewBoard();
+                    state = State.Playing;
+                }));
+            });
+        }
+
+        // Cierra la partida una sola vez: guardado local y evento game_end
+        private void FinishRun(string result)
+        {
+            if (run == null) return;
+            if (run.victoryReached && result != "quit") result = "win";
+            var rec = new RunRecord
+            {
+                score = run.totalScore, stage = run.stage, round = run.roundInStage + 1, victory = run.victoryReached,
+                date = System.DateTime.UtcNow.ToString("yyyy-MM-dd"),
+            };
+            foreach (var c in run.cards) rec.cards.Add(c.Id(cfg));
+            save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
+            save.AddRun(rec);
+            save.Save();
+
+            Analytics.Log("game_end", ("mode", "run"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
+                ("total_score", run.totalScore), ("stage_reached", run.stage), ("cards", run.cards.Count),
+                ("continue_used", run.continueUsed));
+            run = null;
+        }
+
+        private int RunDuration() => Mathf.RoundToInt(Time.realtimeSinceStartup - runStartedAt - pausedTotal);
+
+        // =====================================================================
+        // Pausa y ajustes
+        // =====================================================================
+
+        private void Pause()
+        {
+            if (state != State.Playing && state != State.Countdown) return;
+            stateBeforePause = state;
+            state = State.Paused;
+            pausedAt = Time.realtimeSinceStartup;
+            RefreshToggles();
+            Show(v.pause);
+        }
+
+        private void Resume()
+        {
+            if (state != State.Paused) return;
+            sfx.Play(Sfx.Id.Click);
+            pausedTotal += Time.realtimeSinceStartup - pausedAt;
+            Hide(v.pause);
+            state = stateBeforePause;
+            if (state == State.Playing) boardShownAt = Time.time;   // no penaliza la velocidad por la pausa
+        }
+
+        private void QuitRun()
+        {
+            pausedTotal += Time.realtimeSinceStartup - pausedAt;
+            StopAllCoroutines();
+            v.countdownText.text = v.stampText.text = v.stampSub.text = "";
+            FinishRun("quit");
+            ShowMenu();
+        }
+
+        private void ToggleSound()
+        {
+            save.soundOn = !save.soundOn;
+            Sfx.Enabled = save.soundOn;
+            save.Save();
+            sfx.Play(Sfx.Id.Click);
+            RefreshToggles();
+        }
+
+        private void ToggleVibration()
+        {
+            save.vibrationOn = !save.vibrationOn;
+            Haptics.Enabled = save.vibrationOn;
+            save.Save();
+            Haptics.Pulse(30);
+            RefreshToggles();
+        }
+
+        private void RefreshToggles()
+        {
+            string s = save.soundOn ? "SOUND ON" : "SOUND OFF";
+            if (v.menuSoundLabel != null) v.menuSoundLabel.text = s;
+            if (v.pauseSoundLabel != null) v.pauseSoundLabel.text = s;
+            if (v.pauseVibrationLabel != null) v.pauseVibrationLabel.text = save.vibrationOn ? "VIBRATION ON" : "VIBRATION OFF";
+        }
+
+        // Al cambiar de pestaña o bloquear el móvil, se pausa
+        private void OnApplicationFocus(bool focus) { if (!focus) Pause(); }
+        private void OnApplicationPause(bool paused) { if (paused) Pause(); }
+
+        // =====================================================================
+        // Teclado (ordenador): Esc o P para pausar
+        // =====================================================================
+
+        private static bool PausePressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var k = Keyboard.current;
+            return k != null && (k.escapeKey.wasPressedThisFrame || k.pKey.wasPressedThisFrame);
+#else
+            return Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P);
+#endif
+        }
+
+#if UNITY_EDITOR
+        private static bool KeyPressed(string key)
+        {
+#if ENABLE_INPUT_SYSTEM
+            var k = Keyboard.current;
+            if (k == null) return false;
+            return key == "n" ? k.nKey.wasPressedThisFrame : key == "k" && k.kKey.wasPressedThisFrame;
+#else
+            return Input.GetKeyDown(key);
+#endif
+        }
+#endif
+    }
+}

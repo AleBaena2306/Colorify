@@ -1,0 +1,91 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2ef193238ce1ef543b3499f95b8c944d, type: 3}
+  m_Name: ColorifyConfig
+  m_EditorClassIdentifier: Assembly-CSharp::Colorify.ColorifyConfig
+  families:
+  - id: blue
+    displayName: Blue
+    hue: 255
+    lightness: 0.7
+    chroma: 0.1
+    basePoints: 10
+    spawnWeight: 30
+  - id: teal
+    displayName: Teal
+    hue: 195
+    lightness: 0.76
+    chroma: 0.09
+    basePoints: 15
+    spawnWeight: 24
+  - id: green
+    displayName: Green
+    hue: 145
+    lightness: 0.76
+    chroma: 0.1
+    basePoints: 20
+    spawnWeight: 18
+  - id: yellow
+    displayName: Yellow
+    hue: 98
+    lightness: 0.86
+    chroma: 0.12
+    basePoints: 30
+    spawnWeight: 13
+  - id: orange
+    displayName: Orange
+    hue: 58
+    lightness: 0.76
+    chroma: 0.12
+    basePoints: 45
+    spawnWeight: 9
+  - id: red
+    displayName: Red
+    hue: 25
+    lightness: 0.66
+    chroma: 0.13
+    basePoints: 70
+    spawnWeight: 6
+  shadeLightnessJitter: 0.05
+  shadeChromaJitter: 0.02
+  shadeHueJitter: 10
+  roundsPerStage: 3
+  startGridSize: 2
+  maxGridSize: 8
+  baseTarget: 250
+  stageTargetGrowth: 1.45
+  roundTargetScale:
+  - 1
+  - 1.4
+  - 1.8
+  roundTimeStart: 30
+  roundTimeDecay: 0.97
+  roundTimeMin: 15
+  wrongTapPenaltyFraction: 0.07
+  countdownSeconds: 3
+  speedBonusMax: 1
+  speedWindowBase: 0.8
+  speedWindowPerTile: 0.04
+  fastClearFraction: 0.35
+  minSeparationEasy: 0.14
+  minSeparationHard: 0.05
+  sameFamilyEasy: 0
+  sameFamilyHard: 0.75
+  lightnessShare: 0.5
+  hardestColorStage: 7
+  weightCardFactor: 1.6
+  pointsCardFactor: 1.5
+  doubleMultChance: 0.12
+  cardsOffered: 3
+  continueNearRecordFraction: 0.75
+  continueEveryRuns: 3
+  webTestAds: 1
