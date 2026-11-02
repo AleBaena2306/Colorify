@@ -111,8 +111,8 @@ namespace Colorify
             UIKit.Place(oddsLabel.rectTransform, 0.5f, 0.5f, new Vector2(1000, 50), new Vector2(0, -345));
             v.cardsOdds = UIKit.Rect("Odds", v.cards.transform);
             UIKit.Place(v.cardsOdds, 0.5f, 0.5f, new Vector2(960, 130), new Vector2(0, -440));
-            v.cardsReroll = UIKit.Button("Reroll", v.cards.transform, "REROLL", ColorifyView.TitleColors[1], new Vector2(620, 120), RerollCards, 46);
-            UIKit.Place((RectTransform)v.cardsReroll.transform, 0.5f, 0.5f, new Vector2(620, 120), new Vector2(0, -610));
+            v.cardsReroll = UIKit.Button("Reroll", v.cards.transform, "REROLL", ColorifyView.TitleColors[1], new Vector2(860, 120), RerollCards, 42);
+            UIKit.Place((RectTransform)v.cardsReroll.transform, 0.5f, 0.5f, new Vector2(860, 120), new Vector2(0, -610));
 
             // --- Siguiente ronda ---
             v.nextRound = v.Overlay("NextRound");

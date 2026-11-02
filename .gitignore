@@ -33,3 +33,4 @@ Thumbs.db
 
 # Copias de seguridad y paquetes de cambios de Claude
 /_Backup/
+/.utmp/

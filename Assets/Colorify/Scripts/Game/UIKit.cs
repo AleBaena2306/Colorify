@@ -138,21 +138,23 @@ namespace Colorify
     }
 
     // Botón que se encoge al pulsarlo y rebota al soltarlo
+    // Solo toca la escala mientras se pulsa o vuelve a su tamaño: así no pisa las animaciones de entrada
+    // (antes guardaba la escala al activarse y podía quedarse con la de una animación a medias)
     public class PressScale : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
     {
         public float pressed = 0.92f;
-        private Vector3 baseScale = Vector3.one;
         private float target = 1f, current = 1f;
 
-        private void Awake() => baseScale = transform.localScale;
         public void OnPointerDown(PointerEventData e) => target = pressed;
         public void OnPointerUp(PointerEventData e) => target = 1f;
         public void OnPointerExit(PointerEventData e) => target = 1f;
 
         private void Update()
         {
+            if (target >= 1f && current >= 1f) return;
             current = Mathf.Lerp(current, target, 1f - Mathf.Exp(-25f * Time.unscaledDeltaTime));
-            transform.localScale = baseScale * current;
+            if (target >= 1f && current > 0.995f) current = 1f;
+            transform.localScale = Vector3.one * current;
         }
     }
 

@@ -86,7 +86,8 @@ namespace Colorify
             try { KP_AdsInit("", ColorifyConfig.Load().webTestAds ? 1 : 0, OnInit); }
             catch (Exception e) { Debug.LogWarning("[Ads] " + e.Message); }
 #else
-            IsReady = true;
+            // Solo el Editor simula anuncios. En Android todavía no hay AdMob: sin anuncio, no se ofrece continuar
+            IsReady = Application.isEditor;
 #endif
         }
 
