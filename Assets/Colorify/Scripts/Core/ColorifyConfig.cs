@@ -116,6 +116,26 @@ namespace Colorify
         [Tooltip("Rerolls de la oferta de cartas por plazo")]
         public int rerollsPerStage = 1;
 
+        [Header("Modo Normal (sin cartas: los aciertos suman tiempo y los fallos lo restan)")]
+        [Tooltip("Segundos al empezar")]
+        public float normalStartTime = 10f;
+        [Tooltip("Tope de tiempo acumulado (0 = sin tope). También es el lleno de la barra")]
+        public float normalMaxTime = 15f;
+        [Tooltip("Segundos que suma cada acierto al principio…")]
+        public float normalHitBonus = 1.2f;
+        [Tooltip("…lo que baja por cada acierto…")]
+        public float normalBonusDecayPerHit = 0.01f;
+        [Tooltip("…y el mínimo al que puede bajar")]
+        public float normalHitBonusMin = 0.4f;
+        [Tooltip("Segundos que resta cada fallo")]
+        public float normalMissPenalty = 2f;
+        [Tooltip("Aciertos para que la cuadrícula crezca una fila y una columna")]
+        public int normalHitsPerGridStep = 10;
+        [Tooltip("Aciertos para llegar a la máxima dificultad de color")]
+        public int normalHitsToMaxColorDifficulty = 90;
+        [Tooltip("Parecido de los colores en este modo (1 = base, 2 = el doble de parecidos)")]
+        public float normalSimilarity = 1f;
+
         [Header("Continuar con anuncio (una vez por partida)")]
         [Tooltip("Se ofrece si la partida llega a esta fracción del récord…")]
         [Range(0, 1)] public float continueNearRecordFraction = 0.75f;

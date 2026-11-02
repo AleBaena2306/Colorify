@@ -22,7 +22,11 @@ namespace Colorify
         private SaveData save;
         private readonly System.Random rng = new System.Random();
 
+        private enum Mode { Normal, Survival }
+
         private State state = State.Menu;
+        private Mode mode = Mode.Survival;
+        private NormalRun normal;   // partida del modo Normal (null si no se juega ese modo)
         private State stateBeforePause;
         private RunState run;
         private ColorBoard current;
@@ -71,14 +75,22 @@ namespace Colorify
             UIKit.Place(title.rectTransform, 0.5f, 0.5f, new Vector2(1000, 130), new Vector2(0, 400));
             var tag = UIKit.Text("Tagline", v.menu.transform, "Tap the matching color. Fast.", 46, UIKit.InkSoft);
             UIKit.Place(tag.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 300));
-            v.menuBest = UIKit.Text("Best", v.menu.transform, "", 50, UIKit.Ink, black: true);
-            UIKit.Place(v.menuBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 190));
-            var play = UIKit.Button("Play", v.menu.transform, "PLAY", ColorifyView.TitleColors[3], new Vector2(560, 190), StartRun, 92);
-            UIKit.Place((RectTransform)play.transform, 0.5f, 0.5f, new Vector2(560, 190), new Vector2(0, 0));
-            var best = UIKit.Button("BestRuns", v.menu.transform, "BEST RUNS", ColorifyView.TitleColors[1], new Vector2(420, 120), ShowHistory, 50);
-            UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(-225, -180));
-            var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(420, 120), ToggleSound, 50);
-            UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(225, -180));
+            v.menuBest = UIKit.Text("Best", v.menu.transform, "", 40, UIKit.Ink, black: true);
+            UIKit.Place(v.menuBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 205));
+            // Modos: Normal (aciertos y tiempo), Supervivencia (rondas y cartas) y Online (próximamente)
+            var normalBtn = UIKit.Button("Normal", v.menu.transform, "NORMAL", ColorifyView.TitleColors[3], new Vector2(620, 150), () => StartRun(Mode.Normal), 72);
+            UIKit.Place((RectTransform)normalBtn.transform, 0.5f, 0.5f, new Vector2(620, 150), new Vector2(0, 70));
+            var survivalBtn = UIKit.Button("Survival", v.menu.transform, "SURVIVAL", ColorifyView.TitleColors[4], new Vector2(620, 150), () => StartRun(Mode.Survival), 72);
+            UIKit.Place((RectTransform)survivalBtn.transform, 0.5f, 0.5f, new Vector2(620, 150), new Vector2(0, -100));
+            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE  <size=60%>SOON</size>", UIKit.PaperDark, new Vector2(620, 130), null, 60);
+            UIKit.Place((RectTransform)onlineBtn.transform, 0.5f, 0.5f, new Vector2(620, 130), new Vector2(0, -260));
+            onlineBtn.interactable = false;
+            onlineBtn.GetComponentInChildren<TMPro.TextMeshProUGUI>().color = UIKit.InkSoft;
+            Destroy(onlineBtn.GetComponent<PressScale>());
+            var best = UIKit.Button("BestRuns", v.menu.transform, "BEST RUNS", ColorifyView.TitleColors[1], new Vector2(400, 110), ShowHistory, 46);
+            UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, -430));
+            var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
+            UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(215, -430));
             v.menuSoundLabel = sound.GetComponentInChildren<TMPro.TextMeshProUGUI>();
 
             // --- Pausa ---
@@ -141,7 +153,7 @@ namespace Colorify
             UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
             v.overContinue = UIKit.Button("Continue", v.gameOver.transform, "WATCH AD · ONE MORE TRY", ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
             UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(820, 150), new Vector2(0, 10));
-            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { FinishRun("lose"); StartRun(); }, 70);
+            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { FinishRun("lose"); StartRun(mode); }, 70);
             UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, -180));
             var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { FinishRun("lose"); ShowMenu(); }, 50);
             UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -350));
@@ -182,8 +194,13 @@ namespace Colorify
         {
             state = State.Menu;
             run = null;
+            normal = null;
             foreach (var cg in new[] { v.pause, v.cards, v.nextRound, v.gameOver, v.victory, v.history }) Hide(cg, instant);
-            v.menuBest.text = save.bestScore > 0 ? "BEST  " + UIKit.Thousands(save.bestScore) : "";
+            var bests = new List<string>();
+            if (save.bestNormalHits > 0) bests.Add($"NORMAL  {save.bestNormalHits}");
+            if (save.bestScore > 0) bests.Add($"SURVIVAL  {UIKit.Thousands(save.bestScore)}");
+            v.menuBest.text = bests.Count > 0 ? "BEST  ·  " + string.Join("   ·   ", bests) : "";
+            v.multChip.gameObject.SetActive(true);
             v.roundLabel.text = "";
             v.scoreText.text = "";
             v.totalText.text = "";
@@ -209,17 +226,23 @@ namespace Colorify
         {
             sfx.Play(Sfx.Id.Click);
             for (int i = v.historyList.childCount - 1; i >= 0; i--) Destroy(v.historyList.GetChild(i).gameObject);
+            var normalRow = UIKit.Box("Normal", v.historyList, ColorifyView.WithAlphaTitle(3, 0.35f), 0.8f);
+            UIKit.Place(normalRow.rectTransform, 0.5f, 1f, new Vector2(980, 110), new Vector2(0, -55));
+            var normalLabel = UIKit.Text("Label", normalRow.transform,
+                save.bestNormalHits > 0 ? $"NORMAL  ·  BEST {save.bestNormalHits} HITS" : "NORMAL  ·  NO RUNS YET", 42, UIKit.Ink, black: true);
+            UIKit.Stretch(normalLabel.rectTransform);
             if (save.topRuns.Count == 0)
             {
-                var empty = UIKit.Text("Empty", v.historyList, "No runs yet. Go play!", 50, UIKit.InkSoft);
-                UIKit.Place(empty.rectTransform, 0.5f, 1f, new Vector2(900, 80), new Vector2(0, -60));
+                var empty = UIKit.Text("Empty", v.historyList, "No survival runs yet. Go play!", 46, UIKit.InkSoft);
+                UIKit.Place(empty.rectTransform, 0.5f, 1f, new Vector2(900, 80), new Vector2(0, -185));
             }
-            for (int i = 0; i < save.topRuns.Count; i++)
+            for (int i = 0; i < Mathf.Min(save.topRuns.Count, 8); i++)
             {
                 var r = save.topRuns[i];
                 var row = UIKit.Box("Run" + i, v.historyList, i == 0 ? UIKit.PaperDark : UIKit.WithAlpha(UIKit.PaperDark, 0.5f), 0.8f);
-                UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(980, 120), new Vector2(0, -60 - i * 130));
+                UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(980, 120), new Vector2(0, -185 - i * 130));
                 var label = UIKit.Text("Label", row.transform, $"#{i + 1}  {UIKit.Thousands(r.score)}", 46, UIKit.Ink, black: true);
+                if (i == 0) label.text = "SURVIVAL  " + label.text;
                 label.alignment = TMPro.TextAlignmentOptions.Left;
                 UIKit.Place(label.rectTransform, 0f, 0.5f, new Vector2(420, 100), new Vector2(240, 14));
                 var info = UIKit.Text("Info", row.transform, $"Round {r.stage}-{r.round}{(r.victory ? " · WIN" : "")}", 30, UIKit.InkSoft);
@@ -238,17 +261,87 @@ namespace Colorify
         // Partida
         // =====================================================================
 
-        private void StartRun()
+        private void StartRun(Mode m)
         {
             sfx.Play(Sfx.Id.Click);
             if (attract != null) { StopCoroutine(attract); attract = null; }
             foreach (var cg in new[] { v.menu, v.gameOver, v.history }) Hide(cg);
-            run = new RunState(cfg);
+            mode = m;
+            run = m == Mode.Survival ? new RunState(cfg) : null;
+            normal = m == Mode.Normal ? new NormalRun(cfg) : null;
+            if (normal != null)
+            {
+                roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime;
+                timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
+            }
+            v.multChip.gameObject.SetActive(m == Mode.Survival);
             continueOffered = false;
             runStartedAt = Time.realtimeSinceStartup;
             pausedTotal = 0f;
-            Analytics.Log("game_start", ("mode", "run"), ("level_id", "run"));
-            StartCoroutine(CountdownThen(BeginRound));
+            Analytics.Log("game_start", ("mode", ModeId), ("level_id", "run"));
+            StartCoroutine(CountdownThen(m == Mode.Survival ? (System.Action)BeginRound : BeginNormal));
+        }
+
+        private string ModeId => mode == Mode.Normal ? "normal" : "survival";
+        private bool InRun => run != null || normal != null;
+        private int ActiveGridSize => normal != null ? normal.GridSize : run != null ? run.GridSize : cfg.startGridSize;
+
+        // ---------------- Modo Normal ----------------
+
+        private void BeginNormal()
+        {
+            roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime;
+            timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
+            lastTickSecond = -1;
+            NewBoard();
+            state = State.Playing;
+            RefreshHud(instant: true);
+        }
+
+        private void NormalHit(Tile tile)
+        {
+            normal.hits++;
+            normal.streak++;
+            if (normal.streak > normal.bestStreak) normal.bestStreak = normal.streak;
+            float bonus = normal.HitBonus;
+            timeLeft = Mathf.Min(timeLeft + bonus, normal.MaxTime);
+            if (normal.MaxTime == float.MaxValue) roundTime = Mathf.Max(roundTime, timeLeft);
+
+            Color col = current.TargetColor;
+            juice.Punch(tile.transform, 0.2f);
+            juice.Burst(tile.transform.position, col, 8, 800f);
+            juice.FloatText(v.timerBack.transform.position, "+" + bonus.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s", UIKit.Ink, 56f, 80f);
+            juice.Punch(v.scoreText.transform, 0.12f, 0.18f);
+            sfx.Play(Sfx.Id.Hit, 1f + 0.02f * Mathf.Min(normal.streak, 25));
+            Haptics.Pulse(10);
+            // Cada vez que la cuadrícula crece, un pequeño aviso
+            if (normal.hits % Mathf.Max(1, cfg.normalHitsPerGridStep) == 0 && normal.GridSize > current.size)
+            {
+                v.stampSub.text = $"{normal.GridSize}×{normal.GridSize}";
+                juice.PopIn(v.stampSub.transform, 0f, 0.3f, 0.5f);
+                StartCoroutine(ClearStampSub(0.8f));
+            }
+            NewBoard();
+        }
+
+        private IEnumerator ClearStampSub(float delay)
+        {
+            yield return new WaitForSecondsRealtime(delay);
+            if (state == State.Playing) v.stampSub.text = "";
+        }
+
+        private IEnumerator NormalOver()
+        {
+            state = State.Resolving;
+            sfx.Play(Sfx.Id.Lose);
+            Haptics.Pulse(80);
+            juice.Shake(v.board, 26f, 0.4f);
+            v.stampText.text = "TIME!";
+            v.stampSub.text = "";
+            juice.PopIn(v.stampText.transform, 0f, 0.35f, 1.8f);
+            yield return new WaitForSecondsRealtime(0.9f);
+            v.stampText.text = "";
+            ShowGameOver();
         }
 
         private IEnumerator CountdownThen(System.Action next)
@@ -256,7 +349,7 @@ namespace Colorify
             state = State.Countdown;
             RefreshHud(instant: true);
             v.board.gameObject.SetActive(true);
-            if (run != null) ShowBoard(ColorBoardGenerator.Grey(run.GridSize, rng));
+            if (InRun) ShowBoard(ColorBoardGenerator.Grey(ActiveGridSize, rng));
             for (int i = cfg.countdownSeconds; i > 0; i--)
             {
                 v.countdownText.text = i.ToString();
@@ -283,7 +376,9 @@ namespace Colorify
 
         private void NewBoard()
         {
-            current = ColorBoardGenerator.Generate(run, rng);
+            current = normal != null
+                ? ColorBoardGenerator.Generate(cfg, normal.GridSize, normal.ColorDifficulty, f => cfg.families[f].spawnWeight, rng, cfg.normalSimilarity)
+                : ColorBoardGenerator.Generate(run, rng);
             ShowBoard(current);
             boardShownAt = Time.time;
         }
@@ -303,6 +398,7 @@ namespace Colorify
         private void OnTilePressed(Tile tile)
         {
             if (state != State.Playing || current == null) return;
+            if (normal != null) { if (tile.index == current.correctIndex) NormalHit(tile); else Miss(tile); return; }
             if (tile.index == current.correctIndex) Hit(tile);
             else Miss(tile);
         }
@@ -333,9 +429,10 @@ namespace Colorify
 
         private void Miss(Tile tile)
         {
-            run.wrongTaps++;
+            float penalty;
+            if (normal != null) { normal.misses++; normal.streak = 0; penalty = normal.MissPenalty; }
+            else { run.wrongTaps++; penalty = roundTime * cfg.wrongTapPenaltyFraction; }
             wrongThisRound++;
-            float penalty = roundTime * cfg.wrongTapPenaltyFraction;
             timeLeft -= penalty;
             juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
             juice.Shake(v.board, 8f, 0.2f);
@@ -357,7 +454,7 @@ namespace Colorify
             {
                 timeLeft -= Mathf.Min(Time.deltaTime, 0.1f);
 #if UNITY_EDITOR
-                if (KeyPressed("n")) { run.roundScore = run.Target; StartCoroutine(RoundCleared()); return; }   // trampa: superar ronda
+                if (run != null && KeyPressed("n")) { run.roundScore = run.Target; StartCoroutine(RoundCleared()); return; }   // trampa: superar ronda
                 if (KeyPressed("k")) timeLeft = 0f;                                                                 // trampa: perder
 #endif
                 int sec = Mathf.CeilToInt(timeLeft);
@@ -367,14 +464,22 @@ namespace Colorify
                     sfx.Play(Sfx.Id.Tick, 1.2f, 0.7f);
                     juice.Punch(v.timerBack.transform, 0.06f, 0.15f);
                 }
-                if (timeLeft <= 0f) { timeLeft = 0f; StartCoroutine(RoundFailed()); }
+                if (timeLeft <= 0f) { timeLeft = 0f; StartCoroutine(normal != null ? NormalOver() : RoundFailed()); }
             }
 
-            if (run != null && state != State.Menu) RefreshHud(instant: false);
+            if (InRun && state != State.Menu) RefreshHud(instant: false);
         }
 
         private void RefreshHud(bool instant)
         {
+            if (normal != null)
+            {
+                v.roundLabel.text = "NORMAL";
+                v.scoreText.text = $"{normal.hits} <size=60%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>HITS</color></size>";
+                v.totalText.text = save.bestNormalHits > 0 ? "BEST " + save.bestNormalHits : "";
+                SetTimer(roundTime > 0 ? Mathf.Clamp01(timeLeft / roundTime) : 1f);
+                return;
+            }
             if (run == null) return;
             displayedRoundScore = instant ? run.roundScore : Mathf.Lerp(displayedRoundScore, run.roundScore, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
             if (Mathf.Abs(displayedRoundScore - run.roundScore) < 1f) displayedRoundScore = run.roundScore;
@@ -568,6 +673,7 @@ namespace Colorify
         private void ShowGameOver()
         {
             state = State.GameOver;
+            if (normal != null) { ShowNormalGameOver(); return; }
             bool isRecord = run.totalScore > save.bestScore;
             v.overScore.text = UIKit.Thousands(run.totalScore);
             v.overBest.text = isRecord ? "NEW BEST!" : "BEST " + UIKit.Thousands(save.bestScore);
@@ -587,8 +693,26 @@ namespace Colorify
             if (!offer) FinishRun("lose");
         }
 
+        private void ShowNormalGameOver()
+        {
+            bool isRecord = normal.hits > save.bestNormalHits;
+            v.overScore.text = normal.hits + " <size=40%>HITS</size>";
+            v.overBest.text = isRecord ? "NEW BEST!" : "BEST " + save.bestNormalHits;
+            v.overInfo.text = $"Best streak {normal.bestStreak}  ·  {normal.misses} misses";
+            ColorifyView.MiniCards(v.overCardsRow, null, cfg);
+            bool nearRecord = save.bestNormalHits > 0 && normal.hits >= save.bestNormalHits * cfg.continueNearRecordFraction;
+            bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
+            bool offer = !normal.continueUsed && ads.IsReady && (nearRecord || everyFew);
+            v.overContinue.gameObject.SetActive(offer);
+            if (offer) continueOffered = true;
+            Show(v.gameOver);
+            if (isRecord) juice.Punch(v.overBest.transform, 0.3f, 0.4f);
+            if (!offer) FinishRun("lose");
+        }
+
         private void ContinueWithAd()
         {
+            if (state == State.GameOver && normal != null && !normal.continueUsed) { ContinueNormal(); return; }
             if (state != State.GameOver || run == null || run.continueUsed) return;
             v.overContinue.interactable = false;
             ads.ShowRewarded("continue", rewarded =>
@@ -610,9 +734,42 @@ namespace Colorify
             });
         }
 
+        // Modo Normal: el anuncio devuelve el tiempo inicial una vez por partida
+        private void ContinueNormal()
+        {
+            v.overContinue.interactable = false;
+            ads.ShowRewarded("continue", rewarded =>
+            {
+                v.overContinue.interactable = true;
+                Analytics.Log("continue_offer", ("accepted", true), ("rewarded", rewarded), ("mode", "normal"), ("hits", normal.hits));
+                if (!rewarded) { v.overContinue.gameObject.SetActive(false); return; }
+                normal.continueUsed = true;
+                Hide(v.gameOver);
+                timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
+                StartCoroutine(CountdownThen(() =>
+                {
+                    lastTickSecond = -1;
+                    NewBoard();
+                    state = State.Playing;
+                }));
+            });
+        }
+
         // Cierra la partida una sola vez: guardado local y evento game_end
         private void FinishRun(string result)
         {
+            if (normal != null)
+            {
+                save.normalRunsPlayed++;
+                if (normal.hits > save.bestNormalHits) save.bestNormalHits = normal.hits;
+                save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
+                save.Save();
+                Analytics.Log("game_end", ("mode", "normal"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
+                    ("hits", normal.hits), ("misses", normal.misses), ("best_streak", normal.bestStreak), ("grid", normal.GridSize),
+                    ("continue_used", normal.continueUsed));
+                normal = null;
+                return;
+            }
             if (run == null) return;
             if (run.victoryReached && result != "quit") result = "win";
             var rec = new RunRecord
@@ -625,7 +782,7 @@ namespace Colorify
             save.AddRun(rec);
             save.Save();
 
-            Analytics.Log("game_end", ("mode", "run"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
+            Analytics.Log("game_end", ("mode", "survival"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
                 ("total_score", run.totalScore), ("stage_reached", run.stage), ("cards", run.cards.Count),
                 ("continue_used", run.continueUsed));
             run = null;

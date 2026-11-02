@@ -186,6 +186,8 @@ namespace Colorify
             return cg;
         }
 
+        public static Color WithAlphaTitle(int i, float a) => UIKit.WithAlpha(TitleColors[i % TitleColors.Length], a);
+
         public static string RainbowTitle(string word)
         {
             var sb = new System.Text.StringBuilder();

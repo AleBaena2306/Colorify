@@ -20,7 +20,9 @@ namespace Colorify
     [Serializable]
     public class SaveData
     {
-        public long bestScore;
+        public long bestScore;          // Supervivencia
+        public int bestNormalHits;      // Normal
+        public int normalRunsPlayed;
         public int runsPlayed;
         public int runsSinceContinueOffer;
         public bool soundOn = true;

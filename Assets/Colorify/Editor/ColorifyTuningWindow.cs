@@ -77,7 +77,7 @@ namespace Colorify.EditorTools
 
         private void DrawBaseSettings()
         {
-            showBase = EditorGUILayout.Foldout(showBase, "Valores base (fórmulas)", true);
+            showBase = EditorGUILayout.Foldout(showBase, "Valores base (fórmulas) y modo Normal", true);
             if (!showBase) return;
             var so = new SerializedObject(cfg);
             so.Update();
@@ -86,6 +86,8 @@ namespace Colorify.EditorTools
                          "baseTarget", "stageTargetGrowth", "roundTargetScale", "roundTimeStart", "roundTimeDecay", "roundTimeMin",
                          "wrongTapPenaltyFraction", "minSeparationEasy", "minSeparationHard", "sameFamilyEasy", "sameFamilyHard",
                          "hardestColorStage", "fastClearFraction", "rerollsPerStage",
+                         "normalStartTime", "normalMaxTime", "normalHitBonus", "normalBonusDecayPerHit", "normalHitBonusMin",
+                         "normalMissPenalty", "normalHitsPerGridStep", "normalHitsToMaxColorDifficulty", "normalSimilarity",
                      })
             {
                 var prop = so.FindProperty(name);
