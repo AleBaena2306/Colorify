@@ -29,6 +29,7 @@ namespace Colorify
         private CanvasGroup raceMenu, raceJoin, raceRoom, raceFinal;
         private TMPro.TextMeshProUGUI raceStatus, joinDisplay, joinStatus;
         private TMPro.TextMeshProUGUI roomTitle, roomSub, roomPlayersValue, roomRoundsValue, roomInfo, roomWait;
+        private Button roomAddBot, roomRemoveBot;
         private Button roomStart, roomPub, roomPlayersMinus, roomPlayersPlus, roomRoundsMinus, roomRoundsPlus;
         private RectTransform roomList, finalList, racePanel;
         private TMPro.TextMeshProUGUI finalTitle, finalSub, racePanelText;
@@ -96,6 +97,10 @@ namespace Colorify
             UIKit.Place(roomList, 0.5f, 1f, new Vector2(1000, 560), new Vector2(0, -860));
             roomStart = UIKit.Button("Start", raceRoom.transform, "START", ColorifyView.TitleColors[2], new Vector2(600, 150), RaceStart, 66);
             UIKit.Place((RectTransform)roomStart.transform, 0.5f, 0f, new Vector2(600, 150), new Vector2(0, 300));
+            roomAddBot = UIKit.Button("AddBot", raceRoom.transform, "+ BOT", UIKit.PaperDark, new Vector2(300, 100), () => RoomBot(true), 44);
+            UIKit.Place((RectTransform)roomAddBot.transform, 0.5f, 0f, new Vector2(300, 100), new Vector2(-170, 460));
+            roomRemoveBot = UIKit.Button("RemoveBot", raceRoom.transform, "– BOT", UIKit.PaperDark, new Vector2(300, 100), () => RoomBot(false), 44);
+            UIKit.Place((RectTransform)roomRemoveBot.transform, 0.5f, 0f, new Vector2(300, 100), new Vector2(170, 460));
             roomWait = UIKit.Text("Wait", raceRoom.transform, "", 40, UIKit.InkSoft);
             UIKit.Place(roomWait.rectTransform, 0.5f, 0f, new Vector2(960, 120), new Vector2(0, 300));
             var leave = UIKit.Button("Leave", raceRoom.transform, "LEAVE", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); LeaveRace(); Hide(raceRoom); Show(raceMenu); }, 50);
@@ -163,7 +168,7 @@ namespace Colorify
         private void RaceSend(string json)
         {
             EnsureIdentity();
-            if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, save.playerName, save.bestNormalHits); }
+            if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, CurrentName, save.bestNormalHits); }
             if (duel.Welcomed) duel.SendRaw(json);
             else pendingRaceMsg = json;
             raceStatus.text = "Connecting…";
@@ -313,11 +318,16 @@ namespace Colorify
                 bool filled = i < m.players.Count;
                 var row = UIKit.Box("Row" + i, roomList, filled ? (m.players[i].me ? ColorifyView.WithAlphaTitle(2, 0.35f) : UIKit.WithAlpha(UIKit.PaperDark, 0.85f)) : UIKit.WithAlpha(UIKit.PaperDark, 0.35f), 0.6f);
                 UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(900, 60), new Vector2(0, -32 - i * 68));
-                string text = filled ? m.players[i].name + (m.players[i].host ? $"  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>HOST</color></size>" : "") + (m.players[i].me ? "  <size=70%>(YOU)</size>" : "") : "<color=#" + ColorUtility.ToHtmlStringRGB(UIKit.InkSoft) + ">waiting…</color>";
+                string text = filled ? m.players[i].name + (m.players[i].bot ? $"  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>BOT</color></size>" : "") + (m.players[i].host ? $"  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>HOST</color></size>" : "") + (m.players[i].me ? "  <size=70%>(YOU)</size>" : "") : "<color=#" + ColorUtility.ToHtmlStringRGB(UIKit.InkSoft) + ">waiting…</color>";
                 var label = UIKit.Text("Name", row.transform, text, 36, UIKit.Ink, black: filled);
                 UIKit.Stretch(label.rectTransform);
             }
             int n = m.players.Count;
+            int bots = m.players.FindAll(p => p.bot).Count;
+            roomAddBot.gameObject.SetActive(host);
+            roomRemoveBot.gameObject.SetActive(host);
+            roomAddBot.interactable = n < m.max;
+            roomRemoveBot.interactable = bots > 0;
             roomStart.gameObject.SetActive(host);
             roomStart.interactable = n >= RaceMinPlayers;
             roomStart.GetComponent<Image>().color = n >= RaceMinPlayers ? ColorifyView.TitleColors[2] : UIKit.PaperDark;
@@ -349,6 +359,13 @@ namespace Colorify
         private void SendSettings(int max, int rounds, bool pub)
         {
             duel?.SendRaw("{\"t\":\"settings\",\"max\":" + max + ",\"rounds\":" + rounds + ",\"pub\":" + (pub ? "true" : "false") + "}");
+        }
+
+        // El anfitrión puede añadir bots (aprenden de las partidas reales y llevan la etiqueta BOT)
+        private void RoomBot(bool add)
+        {
+            sfx.Play(Sfx.Id.Click);
+            duel?.SendRaw(add ? "{\"t\":\"addbot\"}" : "{\"t\":\"removebot\"}");
         }
 
         private void RaceStart()
@@ -520,6 +537,7 @@ namespace Colorify
             {
                 var p = raceStandings[i];
                 string name = p.name.Length > 13 ? p.name.Substring(0, 13) : p.name;
+                if (p.bot) name = (p.name.Length > 9 ? p.name.Substring(0, 9) : p.name) + " <size=70%>BOT</size>";
                 bool got = racePlaces.ContainsKey(p.slot) && state != State.Resolving;
                 string col = got ? ColorUtility.ToHtmlStringRGB(ColorifyView.TitleColors[2]) : p.me ? ColorUtility.ToHtmlStringRGB(ColorifyView.TitleColors[4]) : null;
                 string line = $"{i + 1}. {name}<pos=80%>{p.score}";
@@ -555,7 +573,7 @@ namespace Colorify
                 var rank = UIKit.Text("Rank", row.transform, Ordinal(i + 1), 40, i == 0 ? ColorifyView.TitleColors[4] : UIKit.InkSoft, black: true);
                 rank.alignment = TMPro.TextAlignmentOptions.Left;
                 UIKit.Place(rank.rectTransform, 0f, 0.5f, new Vector2(140, 84), new Vector2(100, 0));
-                var name = UIKit.Text("Name", row.transform, p.name + (p.me ? "  <size=70%>(YOU)</size>" : ""), 40, UIKit.Ink, black: true);
+                var name = UIKit.Text("Name", row.transform, p.name + (p.bot ? "  <size=70%>BOT</size>" : "") + (p.me ? "  <size=70%>(YOU)</size>" : ""), 40, UIKit.Ink, black: true);
                 name.alignment = TMPro.TextAlignmentOptions.Left;
                 UIKit.Place(name.rectTransform, 0f, 0.5f, new Vector2(560, 84), new Vector2(460, 0));
                 var score = UIKit.Text("Score", row.transform, p.score + " <size=70%>pts</size>", 42, UIKit.Ink, black: true);

@@ -55,14 +55,19 @@ El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloud
   y si la sala es pública. En cada ronda todos ven el mismo tablero; puntos = puesto (10, 8, 6, 5, 4, 3, 2, 1)
   + rapidez (hasta 5). Un fallo congela 1,5 s; la ronda acaba cuando todos aciertan o a los 8 s. La cuadrícula
   pasa de 2×2 a 8×8 y los colores se parecen cada vez más. Ajustes del servidor: `worker/colorify/race.js`.
-- **Fantasmas**: si nadie busca partida en 10 s, el servidor ofrece una partida real grabada de otro jugador
-  (marcada como GHOST). Se graban las partidas del modo Normal terminadas sin continuar y las de los duelos.
+- **Bot**: si nadie busca partida en 6 s, juega un bot (etiqueta BOT) con las reglas del modo Normal. Aprende de las
+  partidas reales: tiempo por acierto y fallos según el tamaño del tablero (partidas del modo Normal, duelos y
+  carreras). Su nivel y sus trofeos siguen a los del jugador. En la carrera, el anfitrión añade bots con + BOT.
 - **Trofeos** (como Clash Royale): solo en duelos públicos entre personas (mismo nivel: +30 / −20; contra alguien
   con más trofeos se gana más y se pierde menos) y en carreras de salas públicas (de +25 el 1.º a −15 el último).
   Salas privadas y fantasmas no cuentan. Nunca bajan de 0. Ligas: Grey 0, Teal 200, Sage 500, Amber 900,
   Coral 1400, Sky 2000 y Rainbow 3000. El emparejamiento junta trofeos parecidos (la tolerancia crece con la espera).
 - **Ranking global**: Normal (aciertos), Supervivencia (puntos) y trofeos.
-- **Identidad**: id aleatorio y nombre generado («Teal Fox 42», botón NEW NAME). Sin texto libre ni datos personales.
+- **Nombre y cuenta** (CHANGE NAME): nombre libre de 3-16 caracteres con filtro de palabras (PlayerNames.cs y
+  names.js). En el ordenador se escribe en la casilla (Enter guarda); en el navegador del móvil se abre el cuadro
+  de texto del navegador; en Android, el teclado del sistema. Sin cuenta, el nombre escrito dura hasta cerrar el
+  juego. Con «Sign in with Google» se guarda, queda reservado y los trofeos y récords siguen en cualquier
+  dispositivo; se puede cerrar sesión y borrar la cuenta. El ID de cliente de Google está en wrangler.jsonc.
 - `ColorifyConfig > Online`: URL del servidor (en la web se usa el dominio desde el que se juega) y si se envían puntuaciones.
 - En el editor funciona contra el servidor real: para probar un duelo, abre el juego en el editor y en el móvil
   (o en dos pestañas) y pulsa FIND A MATCH en los dos.

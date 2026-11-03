@@ -10,10 +10,10 @@ namespace Colorify.Online
     // Mensajes del servidor (worker/colorify/lobby.js del portfolio). Un solo tipo con todos los campos
     // porque JsonUtility no admite tipos variables; «t» dice cuál es.
     [Serializable]
-    public class NetOpp { public string name; public bool ghost; public int best; }
+    public class NetOpp { public string name; public bool ghost, bot; public int best, trophies; }
 
     [Serializable]
-    public class NetPlayer { public int slot; public string name; public int score, pts, place; public bool host, me; }
+    public class NetPlayer { public int slot; public string name; public int score, pts, place; public bool host, me, bot; }
 
     [Serializable]
     public class NetMsg
@@ -92,36 +92,48 @@ namespace Colorify.Online
             }
         }
 
-        // ghostTimes: instantes (ms de juego) de cada acierto, para que la partida sirva de fantasma en el modo Online
+        // samples: [tamaño, ms, tamaño, ms, …] de cada acierto y misses: [tamaño, fallos, …], para que el bot aprenda
         public static IEnumerator SubmitScore(ColorifyConfig cfg, string player, string name, string mode, long score, string info,
-            List<int> ghostTimes, int ghostOutMs, Action<SubmitResponse> done)
+            List<int> samples, List<int> misses, Action<SubmitResponse> done)
         {
             var sb = new StringBuilder("{");
-            sb.Append("\"player\":\"").Append(player).Append("\",\"name\":\"").Append(name).Append("\",\"mode\":\"").Append(mode)
+            sb.Append("\"player\":\"").Append(player).Append("\",\"name\":\"").Append(Escape(name)).Append("\",\"mode\":\"").Append(mode)
               .Append("\",\"score\":").Append(score).Append(",\"info\":\"").Append(Escape(info)).Append('"');
-            if (ghostTimes != null && ghostTimes.Count >= 5)
-            {
-                sb.Append(",\"ghost\":{\"out\":").Append(ghostOutMs).Append(",\"times\":[");
-                for (int i = 0; i < ghostTimes.Count; i++) { if (i > 0) sb.Append(','); sb.Append(ghostTimes[i]); }
-                sb.Append("]}");
-            }
+            if (samples != null && samples.Count >= 2) AppendArray(sb, "samples", samples);
+            if (misses != null && misses.Count >= 2) AppendArray(sb, "misses", misses);
             sb.Append('}');
-            using (var req = new UnityWebRequest(BaseUrl(cfg) + "/api/colorify/scores", "POST"))
+            SubmitResponse r = null;
+            yield return PostJson(cfg, "scores", sb.ToString(), text =>
             {
-                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(sb.ToString()));
+                if (!string.IsNullOrEmpty(text)) try { r = JsonUtility.FromJson<SubmitResponse>(text); } catch (Exception) { }
+            });
+            if (r != null && !r.ok) Debug.LogWarning("[Online] Puntuación rechazada: " + r.error);
+            done?.Invoke(r);
+        }
+
+        private static void AppendArray(StringBuilder sb, string key, List<int> values)
+        {
+            sb.Append(",\"").Append(key).Append("\":[");
+            for (int i = 0; i < values.Count; i++) { if (i > 0) sb.Append(','); sb.Append(values[i]); }
+            sb.Append(']');
+        }
+
+        // POST a /api/colorify/<path>; done recibe el texto de la respuesta (o null sin conexión)
+        public static IEnumerator PostJson(ColorifyConfig cfg, string path, string json, Action<string> done)
+        {
+            using (var req = new UnityWebRequest(BaseUrl(cfg) + "/api/colorify/" + path, "POST"))
+            {
+                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
                 req.downloadHandler = new DownloadHandlerBuffer();
                 req.SetRequestHeader("Content-Type", "application/json");
-                req.timeout = 10;
+                req.timeout = 15;
                 yield return req.SendWebRequest();
-                SubmitResponse r = null;
-                if (req.downloadHandler != null && !string.IsNullOrEmpty(req.downloadHandler.text))
-                    try { r = JsonUtility.FromJson<SubmitResponse>(req.downloadHandler.text); } catch (Exception) { }
-                if (r != null && !r.ok) Debug.LogWarning("[Online] Puntuación rechazada: " + r.error);
-                done?.Invoke(r);
+                string text = req.downloadHandler != null ? req.downloadHandler.text : null;
+                done?.Invoke(req.result == UnityWebRequest.Result.ConnectionError ? null : text);
             }
         }
 
-        public static string Escape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+        public static string Escape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ");
     }
 
     // Sesión de duelo: abre el WebSocket, se presenta, mantiene la conexión viva y entrega los mensajes en Update.
@@ -138,7 +150,7 @@ namespace Colorify.Online
 
         public DuelConnection(ColorifyConfig cfg, string player, string name, int best)
         {
-            hello = "{\"t\":\"hello\",\"v\":" + OnlineApi.Protocol + ",\"player\":\"" + player + "\",\"name\":\"" + name + "\",\"best\":" + best + "}";
+            hello = "{\"t\":\"hello\",\"v\":" + OnlineApi.Protocol + ",\"player\":\"" + player + "\",\"name\":\"" + OnlineApi.Escape(name) + "\",\"best\":" + best + "}";
             socket = new KpSocket(OnlineApi.SocketUrl(cfg));
             openedAt = Time.realtimeSinceStartup;
         }
@@ -167,8 +179,9 @@ namespace Colorify.Online
 
         public void Queue() => socket.Send("{\"t\":\"queue\"}");
         public void SendRaw(string json) => socket.Send(json);
-        public void Hit(int n, float timeLeft) => socket.Send("{\"t\":\"hit\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + "}");
-        public void Miss(int n, float timeLeft) => socket.Send("{\"t\":\"miss\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + "}");
+        // g: tamaño del tablero (el servidor lo usa para que el bot aprenda)
+        public void Hit(int n, float timeLeft, int g) => socket.Send("{\"t\":\"hit\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + ",\"g\":" + g + "}");
+        public void Miss(int n, float timeLeft, int g) => socket.Send("{\"t\":\"miss\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + ",\"g\":" + g + "}");
         public void Out(int n) => socket.Send("{\"t\":\"out\",\"n\":" + n + "}");
         public void Close() => socket.Dispose();
 

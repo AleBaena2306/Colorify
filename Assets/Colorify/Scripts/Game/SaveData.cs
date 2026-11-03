@@ -30,7 +30,9 @@ namespace Colorify
         public List<RunRecord> topRuns = new List<RunRecord>();
         // Online: id anónimo y nombre generado («Teal Fox 42»); sin datos personales
         public string playerId = "";
-        public string playerName = "";
+        public string playerName = "";      // nombre generado (o el último elegido de las listas)
+        public string accountName = "";     // con cuenta de Google: el nombre de la cuenta
+        public string accountToken = "";    // sesión de la cuenta (no es la contraseña de Google; se puede revocar)
         public int onlineWins, onlineLosses;
         public int trophies;                // copia local de los trofeos (los manda el servidor)
         public int raceMaxPlayers = 8, raceRounds = 10, raceWins, racesPlayed;

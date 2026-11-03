@@ -29,9 +29,14 @@ namespace Colorify
         private bool waitingResult;
         private Button pauseButton;
 
-        // Grabación de aciertos del modo Normal (para el fantasma)
-        private readonly List<int> hitTimes = new List<int>();
-        private float normalPlayMs;
+        // Tiempos de cada acierto y fallos por tamaño de tablero (modo Normal): el bot del modo Online aprende de ellos
+        private readonly List<int> hitSamples = new List<int>();     // [tamaño, ms, tamaño, ms, …]
+        private readonly Dictionary<int, int> missBySize = new Dictionary<int, int>();
+        private List<int> missSamples
+        {
+            get { var l = new List<int>(); foreach (var kv in missBySize) { l.Add(kv.Key); l.Add(kv.Value); } return l; }
+        }
+        private float normalPlayMs, lastHitMs;
 
         // UI
         private CanvasGroup onlineMenu, duelMenu, searching, onlineResult, leaderboard;
@@ -66,8 +71,8 @@ namespace Colorify
             UIKit.Place(onlineName.rectTransform, 0.5f, 0.5f, new Vector2(1000, 90), new Vector2(0, 175));
             onlineTrophies = UIKit.Text("Trophies", onlineMenu.transform, "", 36, UIKit.Ink, black: true);
             UIKit.Place(onlineTrophies.rectTransform, 0.5f, 0.5f, new Vector2(1000, 56), new Vector2(0, 118));
-            var rename = UIKit.Button("Rename", onlineMenu.transform, "NEW NAME", UIKit.PaperDark, new Vector2(300, 74), NewName, 34);
-            UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(300, 74), new Vector2(0, 50));
+            var rename = UIKit.Button("Rename", onlineMenu.transform, "CHANGE NAME", UIKit.PaperDark, new Vector2(340, 74), ShowNameEditor, 34);
+            UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(340, 74), new Vector2(0, 50));
             var find = UIKit.Button("Duel", onlineMenu.transform, "DUEL  <size=60%>1 VS 1</size>", ColorifyView.TitleColors[2], new Vector2(680, 150), ShowDuelMenu, 66);
             UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -70));
             var race = UIKit.Button("Race", onlineMenu.transform, "RACE  <size=60%>UP TO 8</size>", ColorifyView.TitleColors[4], new Vector2(680, 150), ShowRace, 66);
@@ -164,11 +169,12 @@ namespace Colorify
             oppPanel.gameObject.SetActive(false);
 
             BuildRaceOverlays();
+            BuildAccountOverlays();
         }
 
         private void HideOnlineOverlays(bool instant)
         {
-            foreach (var cg in new[] { onlineMenu, duelMenu, searching, onlineResult, leaderboard }) if (cg != null) Hide(cg, instant);
+            foreach (var cg in new[] { onlineMenu, duelMenu, searching, onlineResult, leaderboard, nameEditor, signInWait }) if (cg != null) Hide(cg, instant);
             if (oppPanel != null) oppPanel.gameObject.SetActive(false);
             HideRaceOverlays(instant);
         }
@@ -205,23 +211,23 @@ namespace Colorify
             sfx.Play(Sfx.Id.Click);
             EnsureIdentity();
             Hide(v.menu);
-            onlineName.text = save.playerName;
+            onlineName.text = CurrentName;
             RefreshTrophies();
             onlineStatus.text = save.onlineWins + save.onlineLosses > 0 ? $"<color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>Your duels: {save.onlineWins} won · {save.onlineLosses} lost</color>" : "";
             ostage = OnlineStage.Lobby;
             Show(onlineMenu);
         }
 
-        private void NewName()
-        {
-            sfx.Play(Sfx.Id.Click);
-            save.playerName = PlayerNames.Random(rng);
-            save.Save();
-            onlineName.text = save.playerName;
-            juice.Punch(onlineName.transform, 0.15f);
-        }
+        private void FindMatch() => StartDuelSearch("{\"t\":\"queue\",\"rules\":" + RulesJson() + "}", false);
 
-        private void FindMatch() => StartDuelSearch("{\"t\":\"queue\"}", false);
+        // Reglas del modo Normal de este juego, para que el bot juegue con los mismos números
+        private string RulesJson()
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            return "{\"s\":" + cfg.normalStartTime.ToString(ci) + ",\"m\":" + cfg.normalMaxTime.ToString(ci) + ",\"b\":" + cfg.normalHitBonus.ToString(ci) +
+                   ",\"d\":" + cfg.normalBonusDecayPerHit.ToString(ci) + ",\"n\":" + cfg.normalHitBonusMin.ToString(ci) + ",\"p\":" + cfg.normalMissPenalty.ToString(ci) +
+                   ",\"g0\":" + cfg.startGridSize + ",\"gs\":" + cfg.normalHitsPerGridStep + ",\"gm\":" + cfg.maxGridSize + "}";
+        }
 
         private void DuelCreate() => StartDuelSearch("{\"t\":\"dcreate\"}", true);
 
@@ -259,7 +265,7 @@ namespace Colorify
             normal = null;
             mode = Mode.Online;
             state = State.Menu;
-            if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, save.playerName, save.bestNormalHits); }
+            if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, CurrentName, save.bestNormalHits); }
             queueSent = false;
             if (duel.Welcomed) { duel.SendRaw(duelFirst); queueSent = true; }
             ostage = OnlineStage.Searching;
@@ -331,7 +337,7 @@ namespace Colorify
                     HandleRace(m);
                     break;
                 case "queued":
-                    searchSub.text = PlayersOnline(m.online) + "\nLooking for an opponent with the same skill… or anyone.";
+                    searchSub.text = PlayersOnline(m.online) + "\nLooking for an opponent with similar trophies.\nIf nobody's around, our bot will play you.";
                     break;
                 case "droom":
                     duelRoomCode = m.room;
@@ -353,6 +359,7 @@ namespace Colorify
                     OnDuelResult(m);
                     break;
                 case "error":
+                    if (NameError(m.code)) break;
                     if (RaceError(m.code)) break;
                     if (m.code == "update") ShowOnlineError("A new version of Colorify is out.\nReload the page or update the game to play online.");
                     else ShowOnlineError("The server didn't accept the connection. Try again later.");
@@ -419,7 +426,7 @@ namespace Colorify
             continueOffered = false;
             runStartedAt = Time.realtimeSinceStartup;
             pausedTotal = 0f;
-            oppNameText.text = oppInfo.name;
+            oppNameText.text = oppInfo.name + (oppInfo.ghost ? "" : $"\n<size=75%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{UIKit.Thousands(oppInfo.trophies)} TROPHIES{(oppInfo.bot ? " · BOT" : "")}</color></size>");
             oppPanel.gameObject.SetActive(true);
             juice.PopIn(oppPanel, 0f, 0.3f, 0.6f);
             Analytics.Log("game_start", ("mode", "online"), ("level_id", "duel"), ("ghost", oppInfo.ghost));
@@ -430,7 +437,7 @@ namespace Colorify
         {
             // El servidor da la salida dentro de leadMs: la cuenta atrás termina a la vez para los dos
             float wait = leadMs / 1000f - cfg.countdownSeconds * 0.6f;
-            v.stampSub.text = "VS " + oppInfo.name.ToUpperInvariant() + (oppInfo.ghost ? " · GHOST" : "");
+            v.stampSub.text = "VS " + oppInfo.name.ToUpperInvariant() + (oppInfo.ghost ? " · GHOST" : oppInfo.bot ? " · BOT" : "");
             if (wait > 0f) yield return new WaitForSecondsRealtime(wait);
             v.stampSub.text = "";
             yield return CountdownThen(BeginNormal);
@@ -450,7 +457,7 @@ namespace Colorify
             if (oppPanel == null || !oppPanel.gameObject.activeSelf || oppInfo == null) return;
             oppHitsText.text = oppHits.ToString();
             bool ghost = oppInfo.ghost;
-            oppTagText.text = oppOver ? "OUT OF TIME" : ghost ? "HITS · GHOST" : "HITS";
+            oppTagText.text = oppOver ? "OUT OF TIME" : ghost ? "HITS · GHOST" : oppInfo.bot ? "HITS · BOT" : "HITS";
             oppTagText.color = oppOver ? UIKit.Danger : UIKit.InkSoft;
             bool showTimer = !ghost && !oppOver && oppTimeLeft >= 0f;
             oppTimerBack.gameObject.SetActive(showTimer);
@@ -519,6 +526,7 @@ namespace Colorify
             if (m.reason == "left") info = $"{oppInfo.name} left the duel.";
             else if (m.reason == "time") info = "The duel hit the time limit.";
             else if (oppInfo.ghost) info = $"You played against a ghost: a recorded run by {oppInfo.name}.";
+            else if (oppInfo.bot) info = (m.r == "win" ? "You beat the bot! " : "") + "Nobody else was around, so you played our bot. It learns from real games.";
             else info = m.r == "win" ? "Nice eyes!" : m.r == "draw" ? "Same hits. Again?" : "So close. Again?";
             if (!duelPrivate && !oppInfo.ghost && m.r == "draw") info += "\nNo trophies change hands on a draw.";
             ShowDuelScreen(title, m.you, m.them, info + (trophyNote != "" ? "\n" + trophyNote : ""));
@@ -579,17 +587,20 @@ namespace Colorify
                 UIKit.Place(score.rectTransform, 1f, 0.5f, new Vector2(280, 56), new Vector2(-170, 0));
             }
             lbMe.text = r.me != null && r.me.rank > 0
-                ? $"{save.playerName}: #{r.me.rank} of {r.total} · {UIKit.Thousands(r.me.best)} {unit}"
-                : $"{save.playerName}: no {(r.mode == "trophies" ? "trophies" : "score")} yet";
+                ? $"{CurrentName}: #{r.me.rank} of {r.total} · {UIKit.Thousands(r.me.best)} {unit}"
+                : $"{CurrentName}: no {(r.mode == "trophies" ? "trophies" : "score")} yet";
         }
 
         // Envía la puntuación al ranking global (Normal y Supervivencia). Sin conexión, simplemente no se envía.
-        private void SubmitOnline(string m, long score, string info, List<int> ghostTimes, int outMs)
+        private void SubmitOnline(string m, long score, string info, List<int> samples, List<int> misses)
         {
             if (!cfg.submitScoresOnline || score <= 0) return;
             EnsureIdentity();
-            var times = ghostTimes != null ? new List<int>(ghostTimes) : null;
-            StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, save.playerName, m, score, info, times, outMs, null));
+            var s = samples != null && samples.Count >= 6 ? new List<int>(samples) : null;
+            StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, CurrentName, m, score, info, s, s != null ? misses : null, r =>
+            {
+                if (r != null && !r.ok && r.error == "bad_name") sessionName = null;   // nombre reservado por otra cuenta
+            }));
         }
 
         // =====================================================================
@@ -643,13 +654,22 @@ namespace Colorify
 
         private void ResetHitRecording()
         {
-            hitTimes.Clear();
-            normalPlayMs = 0f;
+            hitSamples.Clear();
+            missBySize.Clear();
+            normalPlayMs = lastHitMs = 0f;
         }
 
-        private void RecordHit()
+        private void RecordHit(int size)
         {
-            if (hitTimes.Count < 3000) hitTimes.Add(Mathf.RoundToInt(normalPlayMs));
+            if (hitSamples.Count < 4000) { hitSamples.Add(size); hitSamples.Add(Mathf.RoundToInt(normalPlayMs - lastHitMs)); }
+            lastHitMs = normalPlayMs;
+        }
+
+        private void RecordMiss(int size)
+        {
+            int n;
+            missBySize.TryGetValue(size, out n);
+            missBySize[size] = n + 1;
         }
 
         private void OnDestroy() => CloseDuel();

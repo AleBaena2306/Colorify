@@ -307,8 +307,8 @@ namespace Colorify
             float bonus = normal.HitBonus;
             timeLeft = Mathf.Min(timeLeft + bonus, normal.MaxTime);
             if (normal.MaxTime == float.MaxValue) roundTime = Mathf.Max(roundTime, timeLeft);
-            RecordHit();
-            if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft);
+            RecordHit(current.size);
+            if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft, current.size);
 
             Color col = current.TargetColor;
             juice.Punch(tile.transform, 0.2f);
@@ -495,7 +495,8 @@ namespace Colorify
             else { run.wrongTaps++; penalty = roundTime * cfg.wrongTapPenaltyFraction; }
             wrongThisRound++;
             timeLeft -= penalty;
-            if (mode == Mode.Online && normal != null) duel?.Miss(normal.hits, timeLeft);
+            if (normal != null) RecordMiss(current.size);
+            if (mode == Mode.Online && normal != null) duel?.Miss(normal.hits, timeLeft, current.size);
             juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
             juice.Shake(v.board, 8f, 0.2f);
             juice.ColorFlash(v.timerFill, UIKit.Danger, 0.35f);
@@ -838,8 +839,7 @@ namespace Colorify
             }
             if (normal != null)
             {
-                SubmitOnline("normal", normal.hits, $"{normal.GridSize}x{normal.GridSize}",
-                    result == "lose" && !normal.continueUsed ? hitTimes : null, Mathf.RoundToInt(normalPlayMs));
+                SubmitOnline("normal", normal.hits, $"{normal.GridSize}x{normal.GridSize}", hitSamples, missSamples);
                 save.normalRunsPlayed++;
                 if (normal.hits > save.bestNormalHits) save.bestNormalHits = normal.hits;
                 save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
@@ -858,7 +858,7 @@ namespace Colorify
                 date = System.DateTime.UtcNow.ToString("yyyy-MM-dd"),
             };
             foreach (var c in run.cards) rec.cards.Add(c.Id(cfg));
-            SubmitOnline("survival", run.totalScore, $"Round {run.RoundLabel}" + (run.victoryReached ? " WIN" : ""), null, 0);
+            SubmitOnline("survival", run.totalScore, $"Round {run.RoundLabel}" + (run.victoryReached ? " WIN" : ""), null, null);
             save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
             save.AddRun(rec);
             save.Save();
