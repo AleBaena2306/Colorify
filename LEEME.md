@@ -40,8 +40,22 @@ Los valores son un punto de partida razonable, **no están equilibrados**: el d�
 ## Build web
 
 - Prueba en el navegador: **COLORIFY > Build > Web: prueba rápida (solo PC, sin publicar)**.
-- **No uses todavía «Web (móvil + PC)»**: publica en el portfolio y Colorify aún no tiene página (game.json).
-  Antes hay que decidir cómo probarlo en móviles sin que aparezca en la web (ver proyectos/colorify.md).
+- **COLORIFY > Build > Web (móvil + PC)** compila y publica en el portfolio (la ficha sigue en WIP).
+
+## Online (duelos y ranking global)
+
+El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloudflare que la web:
+`/api/colorify/play` (WebSocket de los duelos), `/api/colorify/scores` (ranking) y `/api/colorify/health`.
+
+- **Duelo**: reglas del modo Normal, a la vez y con los mismos tableros (semilla del servidor). Si el rival se
+  queda sin tiempo, ganas en cuanto le superas en aciertos; si te quedas tú antes, pierdes. Sin pausa.
+- **Fantasmas**: si nadie busca partida en 10 s, el servidor ofrece una partida real grabada de otro jugador
+  (marcada como GHOST). Se graban las partidas del modo Normal terminadas sin continuar y las de los duelos.
+- **Ranking global**: Normal (aciertos), Supervivencia (puntos) y victorias en duelos (solo contra personas).
+- **Identidad**: id aleatorio y nombre generado («Teal Fox 42», botón NEW NAME). Sin texto libre ni datos personales.
+- `ColorifyConfig > Online`: URL del servidor (en la web se usa el dominio desde el que se juega) y si se envían puntuaciones.
+- En el editor funciona contra el servidor real: para probar un duelo, abre el juego en el editor y en el móvil
+  (o en dos pestañas) y pulsa FIND A MATCH en los dos.
 
 ## Estructura
 
@@ -49,9 +63,10 @@ Los valores son un punto de partida razonable, **no están equilibrados**: el d�
 Assets/Colorify/Scripts/Core      OkColor (OKLab), ColorifyConfig, RunState (rondas, puntos, cartas), ColorBoard (generador)
 Assets/Colorify/Scripts/Game      ColorifyGame (bucle y pantallas), ColorifyView (UI por código), UIKit + Juice, Sfx, SaveData
 Assets/Colorify/Scripts/Platform  Analytics, Ads (H5 Games Ads), Haptics: puentes web
+Assets/Colorify/Scripts/Online    KpSocket (WebSocket web/nativo), OnlineApi + DuelConnection, PlayerNames
 Assets/Colorify/Editor            ColorifySetup, ColorifyWebBuild (copia adaptada de MassboundWebBuild)
 Assets/Colorify/Resources/Fonts   Nunito ExtraBold y Black (OFL)
-Assets/Plugins/WebGL              KovusPrideWeb/Analytics.jslib (de MASSBOUND) + KovusPrideExtras.jslib (vibración)
+Assets/Plugins/WebGL              KovusPrideWeb/Analytics.jslib (de MASSBOUND) + KovusPrideExtras.jslib (vibración) + KovusPrideSocket.jslib (WebSocket)
 ```
 
 ## Limitaciones conocidas
@@ -59,5 +74,6 @@ Assets/Plugins/WebGL              KovusPrideWeb/Analytics.jslib (de MASSBOUND) +
 - Código comprobado con un compilador de C# fuera de Unity, pero **no ejecutado en Unity**: si algo falla al
   importar, pégame el error de la consola (o vincula el PC y lo leo del Editor.log).
 - Sonidos sintetizados provisionales (sustituibles por clips en el objeto «Sfx» en Play o con el pack de Kenney).
-- Sin ranking global todavía: necesita el proyecto de Firebase del estudio (paso tuyo, 5 min, ver el plan).
+- Ranking global y duelos en Cloudflare (Durable Objects, plan gratuito) en lugar de Firebase.
+- Anti-trampas básico: el servidor valida nombres, límites y ritmo de aciertos, pero no comprueba cada toque.
 - La analítica web no envía nada hasta que la página del portfolio implemente `window.kpAnalytics` con consentimiento.

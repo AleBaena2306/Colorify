@@ -10,7 +10,7 @@ namespace Colorify
 {
     // Bucle principal: menú (con el tablero jugando solo detrás) → cuenta atrás → ronda → cartas →
     // siguiente ronda (jugar o saltar) → … → fin de partida. Se crea solo al arrancar la escena.
-    public class ColorifyGame : MonoBehaviour
+    public partial class ColorifyGame : MonoBehaviour
     {
         private enum State { Menu, Countdown, Playing, Resolving, Cards, NextRound, Paused, GameOver, Victory }
 
@@ -22,7 +22,7 @@ namespace Colorify
         private SaveData save;
         private readonly System.Random rng = new System.Random();
 
-        private enum Mode { Normal, Survival }
+        private enum Mode { Normal, Survival, Online }
 
         private State state = State.Menu;
         private Mode mode = Mode.Survival;
@@ -82,11 +82,8 @@ namespace Colorify
             UIKit.Place((RectTransform)normalBtn.transform, 0.5f, 0.5f, new Vector2(620, 150), new Vector2(0, 70));
             var survivalBtn = UIKit.Button("Survival", v.menu.transform, "SURVIVAL", ColorifyView.TitleColors[4], new Vector2(620, 150), () => StartRun(Mode.Survival), 72);
             UIKit.Place((RectTransform)survivalBtn.transform, 0.5f, 0.5f, new Vector2(620, 150), new Vector2(0, -100));
-            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE  <size=60%>SOON</size>", UIKit.PaperDark, new Vector2(620, 130), null, 60);
+            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE", ColorifyView.TitleColors[2], new Vector2(620, 130), ShowOnline, 64);
             UIKit.Place((RectTransform)onlineBtn.transform, 0.5f, 0.5f, new Vector2(620, 130), new Vector2(0, -260));
-            onlineBtn.interactable = false;
-            onlineBtn.GetComponentInChildren<TMPro.TextMeshProUGUI>().color = UIKit.InkSoft;
-            Destroy(onlineBtn.GetComponent<PressScale>());
             var best = UIKit.Button("BestRuns", v.menu.transform, "BEST RUNS", ColorifyView.TitleColors[1], new Vector2(400, 110), ShowHistory, 46);
             UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, -430));
             var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
@@ -108,8 +105,8 @@ namespace Colorify
             var quit = UIKit.Button("Quit", v.pause.transform, "QUIT RUN", ColorifyView.TitleColors[5], new Vector2(560, 120), QuitRun, 50);
             UIKit.Place((RectTransform)quit.transform, 0.5f, 0.5f, new Vector2(560, 120), new Vector2(0, -330));
 
-            var pauseBtn = UIKit.Button("PauseButton", v.game, "II", UIKit.PaperDark, new Vector2(120, 110), Pause, 54);
-            UIKit.Place((RectTransform)pauseBtn.transform, 0f, 1f, new Vector2(120, 110), new Vector2(105, -110));
+            pauseButton = UIKit.Button("PauseButton", v.game, "II", UIKit.PaperDark, new Vector2(120, 110), Pause, 54);
+            UIKit.Place((RectTransform)pauseButton.transform, 0f, 1f, new Vector2(120, 110), new Vector2(105, -110));
 
             // --- Cartas ---
             v.cards = v.Overlay("Cards");
@@ -176,6 +173,7 @@ namespace Colorify
             var back = UIKit.Button("Back", v.history.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), HideHistory, 50);
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
+            BuildOnlineOverlays();
             RefreshToggles();
         }
 
@@ -196,6 +194,7 @@ namespace Colorify
             run = null;
             normal = null;
             foreach (var cg in new[] { v.pause, v.cards, v.nextRound, v.gameOver, v.victory, v.history }) Hide(cg, instant);
+            LeaveOnline(instant);
             var bests = new List<string>();
             if (save.bestNormalHits > 0) bests.Add($"NORMAL  {save.bestNormalHits}");
             if (save.bestScore > 0) bests.Add($"SURVIVAL  {UIKit.Thousands(save.bestScore)}");
@@ -275,6 +274,8 @@ namespace Colorify
                 timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
             }
             v.multChip.gameObject.SetActive(m == Mode.Survival);
+            pauseButton.gameObject.SetActive(true);
+            ResetHitRecording();
             continueOffered = false;
             runStartedAt = Time.realtimeSinceStartup;
             pausedTotal = 0f;
@@ -282,7 +283,7 @@ namespace Colorify
             StartCoroutine(CountdownThen(m == Mode.Survival ? (System.Action)BeginRound : BeginNormal));
         }
 
-        private string ModeId => mode == Mode.Normal ? "normal" : "survival";
+        private string ModeId => mode == Mode.Normal ? "normal" : mode == Mode.Online ? "online" : "survival";
         private bool InRun => run != null || normal != null;
         private int ActiveGridSize => normal != null ? normal.GridSize : run != null ? run.GridSize : cfg.startGridSize;
 
@@ -306,6 +307,8 @@ namespace Colorify
             float bonus = normal.HitBonus;
             timeLeft = Mathf.Min(timeLeft + bonus, normal.MaxTime);
             if (normal.MaxTime == float.MaxValue) roundTime = Mathf.Max(roundTime, timeLeft);
+            RecordHit();
+            if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft);
 
             Color col = current.TargetColor;
             juice.Punch(tile.transform, 0.2f);
@@ -433,7 +436,8 @@ namespace Colorify
         private void NewBoard()
         {
             current = normal != null
-                ? ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight, rng)
+                ? ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight,
+                    mode == Mode.Online ? DuelBoardRng() : rng)
                 : ColorBoardGenerator.Generate(run, rng);
             ShowBoard(current);
             boardShownAt = Time.time;
@@ -490,6 +494,7 @@ namespace Colorify
             else { run.wrongTaps++; penalty = roundTime * cfg.wrongTapPenaltyFraction; }
             wrongThisRound++;
             timeLeft -= penalty;
+            if (mode == Mode.Online && normal != null) duel?.Miss(normal.hits, timeLeft);
             juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
             juice.Shake(v.board, 8f, 0.2f);
             juice.ColorFlash(v.timerFill, UIKit.Danger, 0.35f);
@@ -500,6 +505,8 @@ namespace Colorify
 
         private void Update()
         {
+            UpdateOnline();
+            if (state == State.Playing && normal != null) normalPlayMs += Mathf.Min(Time.deltaTime, 0.1f) * 1000f;
             if (PausePressed())
             {
                 if (state == State.Paused) Resume();
@@ -520,7 +527,12 @@ namespace Colorify
                     sfx.Play(Sfx.Id.Tick, 1.2f, 0.7f);
                     juice.Punch(v.timerBack.transform, 0.06f, 0.15f);
                 }
-                if (timeLeft <= 0f) { timeLeft = 0f; StartCoroutine(normal != null ? NormalOver() : RoundFailed()); }
+                if (timeLeft <= 0f)
+                {
+                    timeLeft = 0f;
+                    if (mode == Mode.Online && normal != null) duel?.Out(normal.hits);
+                    StartCoroutine(normal != null ? NormalOver() : RoundFailed());
+                }
             }
 
             if (InRun && state != State.Menu) RefreshHud(instant: false);
@@ -530,9 +542,9 @@ namespace Colorify
         {
             if (normal != null)
             {
-                v.roundLabel.text = "NORMAL";
+                v.roundLabel.text = mode == Mode.Online ? "ONLINE DUEL" : "NORMAL";
                 v.scoreText.text = $"{normal.hits} <size=60%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>HITS</color></size>";
-                v.totalText.text = save.bestNormalHits > 0 ? "BEST " + save.bestNormalHits : "";
+                v.totalText.text = mode == Mode.Online ? DuelHudLine() : save.bestNormalHits > 0 ? "BEST " + save.bestNormalHits : "";
                 SetTimer(roundTime > 0 ? Mathf.Clamp01(timeLeft / roundTime) : 1f);
                 return;
             }
@@ -729,6 +741,7 @@ namespace Colorify
         private void ShowGameOver()
         {
             state = State.GameOver;
+            if (mode == Mode.Online && normal != null) { DuelAfterOut(); return; }
             if (normal != null) { ShowNormalGameOver(); return; }
             bool isRecord = run.totalScore > save.bestScore;
             v.overScore.text = UIKit.Thousands(run.totalScore);
@@ -814,8 +827,17 @@ namespace Colorify
         // Cierra la partida una sola vez: guardado local y evento game_end
         private void FinishRun(string result)
         {
+            if (mode == Mode.Online && normal != null)
+            {
+                Analytics.Log("game_end", ("mode", "online"), ("level_id", "duel"), ("duration_sec", RunDuration()), ("result", result),
+                    ("hits", normal.hits), ("misses", normal.misses), ("opp_hits", oppHits), ("ghost", oppInfo != null && oppInfo.ghost));
+                normal = null;
+                return;
+            }
             if (normal != null)
             {
+                SubmitOnline("normal", normal.hits, $"{normal.GridSize}x{normal.GridSize}",
+                    result == "lose" && !normal.continueUsed ? hitTimes : null, Mathf.RoundToInt(normalPlayMs));
                 save.normalRunsPlayed++;
                 if (normal.hits > save.bestNormalHits) save.bestNormalHits = normal.hits;
                 save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
@@ -834,6 +856,7 @@ namespace Colorify
                 date = System.DateTime.UtcNow.ToString("yyyy-MM-dd"),
             };
             foreach (var c in run.cards) rec.cards.Add(c.Id(cfg));
+            SubmitOnline("survival", run.totalScore, $"Round {run.RoundLabel}" + (run.victoryReached ? " WIN" : ""), null, 0);
             save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
             save.AddRun(rec);
             save.Save();
@@ -853,6 +876,7 @@ namespace Colorify
         private void Pause()
         {
             if (state != State.Playing && state != State.Countdown) return;
+            if (mode == Mode.Online && normal != null) return;   // en un duelo no se puede pausar
             stateBeforePause = state;
             state = State.Paused;
             pausedAt = Time.realtimeSinceStartup;

@@ -28,6 +28,10 @@ namespace Colorify
         public bool soundOn = true;
         public bool vibrationOn = true;
         public List<RunRecord> topRuns = new List<RunRecord>();
+        // Online: id anónimo y nombre generado («Teal Fox 42»); sin datos personales
+        public string playerId = "";
+        public string playerName = "";
+        public int onlineWins, onlineLosses;
 
         private const string Key = "colorify.save.v1";
         public const int MaxRuns = 10;

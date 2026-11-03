@@ -145,6 +145,12 @@ namespace Colorify
         [Tooltip("Modo Normal: segundos que, al perder, se señala y bota la ficha correcta antes de la pantalla de fin.")]
         public float normalRevealSeconds = 2.2f;
 
+        [Header("Online")]
+        [Tooltip("Servidor de Kovu's Pride (el portfolio). En la web se usa el dominio desde el que se juega.")]
+        public string onlineBaseUrl = "https://alejandrobaenaportfolio.com";
+        [Tooltip("Enviar las puntuaciones de Normal y Supervivencia al ranking global")]
+        public bool submitScoresOnline = true;
+
         [Header("Continuar con anuncio (una vez por partida)")]
         [Tooltip("Se ofrece si la partida llega a esta fracción del récord…")]
         [Range(0, 1)] public float continueNearRecordFraction = 0.75f;

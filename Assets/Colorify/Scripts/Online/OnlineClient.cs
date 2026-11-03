@@ -1,0 +1,165 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
+using UnityEngine.Networking;
+
+namespace Colorify.Online
+{
+    // Mensajes del servidor (worker/colorify/lobby.js del portfolio). Un solo tipo con todos los campos
+    // porque JsonUtility no admite tipos variables; «t» dice cuál es.
+    [Serializable]
+    public class NetOpp { public string name; public bool ghost; public int best; }
+
+    [Serializable]
+    public class NetMsg
+    {
+        public string t;          // welcome, queued, noghost, match, opp, result, pong, error
+        public int online, waiting;
+        public int seed, lead;    // match
+        public NetOpp opp;        // match
+        public int n;             // opp: aciertos del rival
+        public float tl = -1f;    // opp: tiempo que le queda (−1 si no se sabe, p. ej. fantasma)
+        public bool over;         // opp: se ha quedado sin tiempo
+        public string r, reason;  // result: win/lose/draw · score/left/time
+        public int you, them;     // result
+        public string code;       // error
+    }
+
+    [Serializable]
+    public class ScoreRow { public int rank; public string name; public long score; public string info; public bool me; }
+
+    [Serializable]
+    public class MyRank { public int rank; public long best; }
+
+    [Serializable]
+    public class ScoresResponse { public bool ok; public string mode; public int total; public List<ScoreRow> top = new List<ScoreRow>(); public MyRank me; public string error; }
+
+    [Serializable]
+    public class SubmitResponse { public bool ok; public int rank; public long best; public string error; }
+
+    // Conexión con el servidor de Kovu's Pride en el portfolio: ranking global (HTTP) y duelos (WebSocket).
+    public static class OnlineApi
+    {
+        public const int Protocol = 1;
+
+        // En la web se usa el mismo dominio desde el que se juega (así también vale en vistas previas);
+        // en el editor, en Android o en una prueba local, el del portfolio.
+        public static string BaseUrl(ColorifyConfig cfg)
+        {
+            string fallback = string.IsNullOrEmpty(cfg.onlineBaseUrl) ? "https://alejandrobaenaportfolio.com" : cfg.onlineBaseUrl.TrimEnd('/');
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try
+            {
+                var u = new Uri(Application.absoluteURL);
+                if ((u.Scheme == "https" || u.Scheme == "http") && u.Host != "localhost" && u.Host != "127.0.0.1")
+                    return u.GetLeftPart(UriPartial.Authority);
+            }
+            catch (Exception) { }
+#endif
+            return fallback;
+        }
+
+        public static string SocketUrl(ColorifyConfig cfg)
+        {
+            string b = BaseUrl(cfg);
+            return (b.StartsWith("https") ? "wss" + b.Substring(5) : "ws" + b.Substring(4)) + "/api/colorify/play";
+        }
+
+        public static IEnumerator GetScores(ColorifyConfig cfg, string mode, string player, Action<ScoresResponse> done)
+        {
+            string url = BaseUrl(cfg) + "/api/colorify/scores?mode=" + mode + "&player=" + UnityWebRequest.EscapeURL(player ?? "");
+            using (var req = UnityWebRequest.Get(url))
+            {
+                req.timeout = 10;
+                yield return req.SendWebRequest();
+                ScoresResponse r = null;
+                if (req.result == UnityWebRequest.Result.Success)
+                    try { r = JsonUtility.FromJson<ScoresResponse>(req.downloadHandler.text); } catch (Exception) { }
+                done?.Invoke(r);
+            }
+        }
+
+        // ghostTimes: instantes (ms de juego) de cada acierto, para que la partida sirva de fantasma en el modo Online
+        public static IEnumerator SubmitScore(ColorifyConfig cfg, string player, string name, string mode, long score, string info,
+            List<int> ghostTimes, int ghostOutMs, Action<SubmitResponse> done)
+        {
+            var sb = new StringBuilder("{");
+            sb.Append("\"player\":\"").Append(player).Append("\",\"name\":\"").Append(name).Append("\",\"mode\":\"").Append(mode)
+              .Append("\",\"score\":").Append(score).Append(",\"info\":\"").Append(Escape(info)).Append('"');
+            if (ghostTimes != null && ghostTimes.Count >= 5)
+            {
+                sb.Append(",\"ghost\":{\"out\":").Append(ghostOutMs).Append(",\"times\":[");
+                for (int i = 0; i < ghostTimes.Count; i++) { if (i > 0) sb.Append(','); sb.Append(ghostTimes[i]); }
+                sb.Append("]}");
+            }
+            sb.Append('}');
+            using (var req = new UnityWebRequest(BaseUrl(cfg) + "/api/colorify/scores", "POST"))
+            {
+                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(sb.ToString()));
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.timeout = 10;
+                yield return req.SendWebRequest();
+                SubmitResponse r = null;
+                if (req.downloadHandler != null && !string.IsNullOrEmpty(req.downloadHandler.text))
+                    try { r = JsonUtility.FromJson<SubmitResponse>(req.downloadHandler.text); } catch (Exception) { }
+                if (r != null && !r.ok) Debug.LogWarning("[Online] Puntuación rechazada: " + r.error);
+                done?.Invoke(r);
+            }
+        }
+
+        public static string Escape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
+    // Sesión de duelo: abre el WebSocket, se presenta, mantiene la conexión viva y entrega los mensajes en Update.
+    public class DuelConnection
+    {
+        private readonly KpSocket socket;
+        private readonly string hello;
+        private bool helloSent;
+        private float nextPing;
+        public bool Welcomed { get; private set; }
+        public bool Closed => socket.State == KpSocket.Status.Closed;
+        public bool EverOpened { get; private set; }
+        private float openedAt;
+
+        public DuelConnection(ColorifyConfig cfg, string player, string name, int best)
+        {
+            hello = "{\"t\":\"hello\",\"v\":" + OnlineApi.Protocol + ",\"player\":\"" + player + "\",\"name\":\"" + name + "\",\"best\":" + best + "}";
+            socket = new KpSocket(OnlineApi.SocketUrl(cfg));
+            openedAt = Time.realtimeSinceStartup;
+        }
+
+        // Sin conexión a los 10 s: se da por fallida
+        public bool TimedOut => !EverOpened && Time.realtimeSinceStartup - openedAt > 10f;
+
+        public void Poll(List<NetMsg> into)
+        {
+            string raw;
+            while (socket.TryReceive(out raw))
+            {
+                NetMsg m = null;
+                try { m = JsonUtility.FromJson<NetMsg>(raw); } catch (Exception) { }
+                if (m == null || string.IsNullOrEmpty(m.t)) continue;
+                if (m.t == "welcome") Welcomed = true;
+                into.Add(m);
+            }
+            if (socket.State == KpSocket.Status.Open)
+            {
+                EverOpened = true;
+                if (!helloSent) { socket.Send(hello); helloSent = true; }
+                if (Time.realtimeSinceStartup >= nextPing) { nextPing = Time.realtimeSinceStartup + 5f; if (Welcomed) socket.Send("{\"t\":\"ping\"}"); }
+            }
+        }
+
+        public void Queue() => socket.Send("{\"t\":\"queue\"}");
+        public void Hit(int n, float timeLeft) => socket.Send("{\"t\":\"hit\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + "}");
+        public void Miss(int n, float timeLeft) => socket.Send("{\"t\":\"miss\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + "}");
+        public void Out(int n) => socket.Send("{\"t\":\"out\",\"n\":" + n + "}");
+        public void Close() => socket.Dispose();
+
+        private static string F(float v) => Mathf.Max(0f, v).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+    }
+}
