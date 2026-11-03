@@ -142,6 +142,8 @@ namespace Colorify
         public float normalSeparationHard = 0.03f;
         [Tooltip("Multiplicador extra de parecido en este modo (1 = sin cambio, 2 = el doble de parecidos)")]
         public float normalSimilarity = 1f;
+        [Tooltip("Modo Normal: segundos que, al perder, se señala y bota la ficha correcta antes de la pantalla de fin.")]
+        public float normalRevealSeconds = 2.2f;
 
         [Header("Continuar con anuncio (una vez por partida)")]
         [Tooltip("Se ofrece si la partida llega a esta fracción del récord…")]

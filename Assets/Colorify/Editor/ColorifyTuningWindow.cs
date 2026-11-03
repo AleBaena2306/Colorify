@@ -88,7 +88,7 @@ namespace Colorify.EditorTools
                          "hardestColorStage", "fastClearFraction", "rerollsPerStage",
                          "normalStartTime", "normalMaxTime", "normalHitBonus", "normalBonusDecayPerHit", "normalHitBonusMin",
                          "normalMissPenalty", "normalHitsPerGridStep", "normalHitsToMaxColorDifficulty", "normalSameFamily",
-                         "normalSeparationEasy", "normalSeparationHard", "normalSimilarity",
+                         "normalSeparationEasy", "normalSeparationHard", "normalSimilarity", "normalRevealSeconds",
                      })
             {
                 var prop = so.FindProperty(name);

@@ -341,7 +341,63 @@ namespace Colorify
             juice.PopIn(v.stampText.transform, 0f, 0.35f, 1.8f);
             yield return new WaitForSecondsRealtime(0.9f);
             v.stampText.text = "";
+            yield return RevealCorrectTile(cfg.normalRevealSeconds);
             ShowGameOver();
+        }
+
+        // Al perder en Normal: apaga las demás fichas y hace botar la correcta, con un aro, para que se vea cuál era
+        private IEnumerator RevealCorrectTile(float seconds)
+        {
+            if (current == null || seconds <= 0f) yield break;
+            int count = current.size * current.size;
+            if (current.correctIndex < 0 || current.correctIndex >= count) yield break;
+            var tile = v.tiles[current.correctIndex];
+            var rt = tile.image.rectTransform;
+            Vector2 basePos = rt.anchoredPosition;
+            int sibling = rt.GetSiblingIndex();
+            rt.SetAsLastSibling();
+
+            var others = new List<(Image img, Color col)>();
+            for (int i = 0; i < count; i++)
+                if (i != current.correctIndex) others.Add((v.tiles[i].image, v.tiles[i].image.color));
+
+            // Aro detrás de la ficha (hermano justo debajo de ella, que la sigue al botar)
+            var ring = new GameObject("RevealRing", typeof(RectTransform), typeof(Image));
+            var ringRt = (RectTransform)ring.transform;
+            ringRt.SetParent(rt.parent, false);
+            ringRt.SetSiblingIndex(rt.GetSiblingIndex());
+            ringRt.anchorMin = rt.anchorMin; ringRt.anchorMax = rt.anchorMax; ringRt.pivot = rt.pivot;
+            float pad = Mathf.Max(8f, rt.sizeDelta.x * 0.09f);
+            ringRt.sizeDelta = rt.sizeDelta + Vector2.one * pad * 2f;
+            var ringImg = ring.GetComponent<Image>();
+            ringImg.sprite = tile.image.sprite;
+            ringImg.type = tile.image.type;
+            ringImg.pixelsPerUnitMultiplier = tile.image.pixelsPerUnitMultiplier;
+            ringImg.raycastTarget = false;
+            Color ink = UIKit.Ink;
+
+            float bounceHeight = Mathf.Clamp(rt.sizeDelta.y * 0.22f, 14f, 60f);
+            for (float t = 0f; t < seconds; t += Time.unscaledDeltaTime)
+            {
+                float k = Mathf.Clamp01(t / 0.25f);                       // entrada suave
+                foreach (var o in others) o.img.color = Color.Lerp(o.col, new Color(o.col.r, o.col.g, o.col.b, 0.22f), k);
+                float phase = (t * 2.6f) % 1f;                             // 2,6 botes por segundo
+                float hop = 4f * phase * (1f - phase);                     // parábola 0→1→0
+                float squash = phase < 0.08f || phase > 0.92f ? 0.1f : 0f;  // aplastado al tocar suelo
+                rt.anchoredPosition = basePos + Vector2.up * hop * bounceHeight * k;
+                float grow = Mathf.Lerp(1f, 1.12f, k);
+                rt.localScale = new Vector3(grow + squash * k, grow - squash * k, 1f);
+                ringRt.anchoredPosition = rt.anchoredPosition;
+                ringRt.localScale = rt.localScale;
+                ringImg.color = new Color(ink.r, ink.g, ink.b, k * (0.65f + 0.35f * Mathf.Sin(t * 10f)));
+                yield return null;
+            }
+
+            Destroy(ring);
+            rt.anchoredPosition = basePos;
+            rt.localScale = Vector3.one;
+            rt.SetSiblingIndex(sibling);
+            foreach (var o in others) o.img.color = o.col;
         }
 
         private IEnumerator CountdownThen(System.Action next)
