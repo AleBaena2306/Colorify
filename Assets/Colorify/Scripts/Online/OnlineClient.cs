@@ -13,6 +13,9 @@ namespace Colorify.Online
     public class NetOpp { public string name; public bool ghost; public int best; }
 
     [Serializable]
+    public class NetPlayer { public int slot; public string name; public int score, pts, place; public bool host, me; }
+
+    [Serializable]
     public class NetMsg
     {
         public string t;          // welcome, queued, noghost, match, opp, result, pong, error
@@ -25,6 +28,13 @@ namespace Colorify.Online
         public string r, reason;  // result: win/lose/draw · score/left/time
         public int you, them;     // result
         public string code;       // error
+        // Modo Carrera (race.js)
+        public string room, state;          // room: código y estado (lobby/playing)
+        public int max, rounds;             // room
+        public bool pub, host;              // room: pública · soy el anfitrión
+        public List<NetPlayer> players = new List<NetPlayer>();
+        public int round, total, size, limit, slot, place, pts;   // rstart / rhit / rend
+        public float diff;                  // rstart: dificultad de color 0→1
     }
 
     [Serializable]
@@ -155,6 +165,7 @@ namespace Colorify.Online
         }
 
         public void Queue() => socket.Send("{\"t\":\"queue\"}");
+        public void SendRaw(string json) => socket.Send(json);
         public void Hit(int n, float timeLeft) => socket.Send("{\"t\":\"hit\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + "}");
         public void Miss(int n, float timeLeft) => socket.Send("{\"t\":\"miss\",\"n\":" + n + ",\"tl\":" + F(timeLeft) + "}");
         public void Out(int n) => socket.Send("{\"t\":\"out\",\"n\":" + n + "}");

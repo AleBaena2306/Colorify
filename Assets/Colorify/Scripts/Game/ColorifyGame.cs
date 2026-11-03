@@ -22,7 +22,7 @@ namespace Colorify
         private SaveData save;
         private readonly System.Random rng = new System.Random();
 
-        private enum Mode { Normal, Survival, Online }
+        private enum Mode { Normal, Survival, Online, Race }
 
         private State state = State.Menu;
         private Mode mode = Mode.Survival;
@@ -283,7 +283,7 @@ namespace Colorify
             StartCoroutine(CountdownThen(m == Mode.Survival ? (System.Action)BeginRound : BeginNormal));
         }
 
-        private string ModeId => mode == Mode.Normal ? "normal" : mode == Mode.Online ? "online" : "survival";
+        private string ModeId => mode == Mode.Normal ? "normal" : mode == Mode.Online ? "online" : mode == Mode.Race ? "race" : "survival";
         private bool InRun => run != null || normal != null;
         private int ActiveGridSize => normal != null ? normal.GridSize : run != null ? run.GridSize : cfg.startGridSize;
 
@@ -458,6 +458,7 @@ namespace Colorify
         private void OnTilePressed(Tile tile)
         {
             if (state != State.Playing || current == null) return;
+            if (mode == Mode.Race) { RaceTap(tile); return; }
             if (normal != null) { if (tile.index == current.correctIndex) NormalHit(tile); else Miss(tile); return; }
             if (tile.index == current.correctIndex) Hit(tile);
             else Miss(tile);
@@ -513,7 +514,8 @@ namespace Colorify
                 else if (state == State.Playing || state == State.Countdown) Pause();
             }
 
-            if (state == State.Playing)
+            if (mode == Mode.Race) UpdateRace();
+            else if (state == State.Playing)
             {
                 timeLeft -= Mathf.Min(Time.deltaTime, 0.1f);
 #if UNITY_EDITOR
@@ -876,7 +878,7 @@ namespace Colorify
         private void Pause()
         {
             if (state != State.Playing && state != State.Countdown) return;
-            if (mode == Mode.Online && normal != null) return;   // en un duelo no se puede pausar
+            if ((mode == Mode.Online && normal != null) || mode == Mode.Race) return;   // en línea no se puede pausar
             stateBeforePause = state;
             state = State.Paused;
             pausedAt = Time.realtimeSinceStartup;

@@ -49,6 +49,11 @@ El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloud
 
 - **Duelo**: reglas del modo Normal, a la vez y con los mismos tableros (semilla del servidor). Si el rival se
   queda sin tiempo, ganas en cuanto le superas en aciertos; si te quedas tú antes, pierdes. Sin pausa.
+- **Carrera** (2 a 8 jugadores): sala con código de 4 cifras (CREATE ROOM / JOIN WITH CODE) o QUICK PLAY,
+  que entra en la sala pública abierta con más gente o crea una. El anfitrión elige jugadores (2-8), rondas (3-30)
+  y si la sala es pública. En cada ronda todos ven el mismo tablero; puntos = puesto (10, 8, 6, 5, 4, 3, 2, 1)
+  + rapidez (hasta 5). Un fallo congela 1,5 s; la ronda acaba cuando todos aciertan o a los 8 s. La cuadrícula
+  pasa de 2×2 a 8×8 y los colores se parecen cada vez más. Ajustes del servidor: `worker/colorify/race.js`.
 - **Fantasmas**: si nadie busca partida en 10 s, el servidor ofrece una partida real grabada de otro jugador
   (marcada como GHOST). Se graban las partidas del modo Normal terminadas sin continuar y las de los duelos.
 - **Ranking global**: Normal (aciertos), Supervivencia (puntos) y victorias en duelos (solo contra personas).

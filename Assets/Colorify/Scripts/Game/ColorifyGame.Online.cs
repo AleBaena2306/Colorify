@@ -54,7 +54,7 @@ namespace Colorify
             var t = UIKit.Text("Title", onlineMenu.transform, ColorifyView.RainbowTitle("ONLINE"), 120, UIKit.Ink, black: true);
             UIKit.Place(t.rectTransform, 0.5f, 0.5f, new Vector2(1000, 160), new Vector2(0, 560));
             var rules = UIKit.Text("Rules", onlineMenu.transform,
-                "1 vs 1 in real time, same boards.\nHits add time, misses take it away.\nRun out of time with fewer hits and you lose.", 40, UIKit.InkSoft);
+                "DUEL: 1 vs 1, same boards. Hits add time, misses take it away.\nRACE: up to 8 players. First to tap the color scores the most.", 38, UIKit.InkSoft);
             UIKit.Place(rules.rectTransform, 0.5f, 0.5f, new Vector2(960, 200), new Vector2(0, 380));
             var youLabel = UIKit.Text("YouLabel", onlineMenu.transform, "YOU PLAY AS", 32, UIKit.InkSoft, black: true);
             UIKit.Place(youLabel.rectTransform, 0.5f, 0.5f, new Vector2(900, 50), new Vector2(0, 230));
@@ -62,12 +62,14 @@ namespace Colorify
             UIKit.Place(onlineName.rectTransform, 0.5f, 0.5f, new Vector2(1000, 90), new Vector2(0, 165));
             var rename = UIKit.Button("Rename", onlineMenu.transform, "NEW NAME", UIKit.PaperDark, new Vector2(340, 90), NewName, 38);
             UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(340, 90), new Vector2(0, 75));
-            var find = UIKit.Button("Find", onlineMenu.transform, "FIND A MATCH", ColorifyView.TitleColors[2], new Vector2(680, 170), FindMatch, 72);
-            UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 170), new Vector2(0, -100));
-            var lb = UIKit.Button("Leaderboard", onlineMenu.transform, "LEADERBOARD", ColorifyView.TitleColors[0], new Vector2(560, 130), () => ShowLeaderboard(lbMode), 54);
-            UIKit.Place((RectTransform)lb.transform, 0.5f, 0.5f, new Vector2(560, 130), new Vector2(0, -280));
+            var find = UIKit.Button("Duel", onlineMenu.transform, "DUEL  <size=60%>1 VS 1</size>", ColorifyView.TitleColors[2], new Vector2(680, 150), FindMatch, 66);
+            UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -70));
+            var race = UIKit.Button("Race", onlineMenu.transform, "RACE  <size=60%>UP TO 8</size>", ColorifyView.TitleColors[4], new Vector2(680, 150), ShowRace, 66);
+            UIKit.Place((RectTransform)race.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -240));
+            var lb = UIKit.Button("Leaderboard", onlineMenu.transform, "LEADERBOARD", ColorifyView.TitleColors[0], new Vector2(560, 110), () => ShowLeaderboard(lbMode), 48);
+            UIKit.Place((RectTransform)lb.transform, 0.5f, 0.5f, new Vector2(560, 110), new Vector2(0, -395));
             onlineStatus = UIKit.Text("Status", onlineMenu.transform, "", 36, UIKit.Danger);
-            UIKit.Place(onlineStatus.rectTransform, 0.5f, 0.5f, new Vector2(960, 100), new Vector2(0, -410));
+            UIKit.Place(onlineStatus.rectTransform, 0.5f, 0.5f, new Vector2(960, 100), new Vector2(0, -515));
             var back = UIKit.Button("Back", onlineMenu.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
@@ -136,12 +138,15 @@ namespace Colorify
             fr.anchorMin = Vector2.zero; fr.anchorMax = Vector2.one; fr.pivot = new Vector2(0f, 0.5f);
             fr.offsetMin = fr.offsetMax = Vector2.zero;
             oppPanel.gameObject.SetActive(false);
+
+            BuildRaceOverlays();
         }
 
         private void HideOnlineOverlays(bool instant)
         {
             foreach (var cg in new[] { onlineMenu, searching, onlineResult, leaderboard }) if (cg != null) Hide(cg, instant);
             if (oppPanel != null) oppPanel.gameObject.SetActive(false);
+            HideRaceOverlays(instant);
         }
 
         // Sale del modo Online: cierra la conexión y las pantallas
@@ -151,7 +156,7 @@ namespace Colorify
             CloseDuel();
             if (pauseButton != null) pauseButton.gameObject.SetActive(true);
             ostage = OnlineStage.None;
-            if (mode == Mode.Online) mode = Mode.Normal;
+            if (mode == Mode.Online || mode == Mode.Race) mode = Mode.Normal;
         }
 
         private void CloseDuel()
@@ -262,6 +267,10 @@ namespace Colorify
             {
                 case "welcome":
                     if (ostage == OnlineStage.Searching && !queueSent) { duel.Queue(); queueSent = true; }
+                    if (pendingRaceMsg != null) { duel.SendRaw(pendingRaceMsg); pendingRaceMsg = null; }
+                    break;
+                case "room": case "rstart": case "rhit": case "rend": case "rover":
+                    HandleRace(m);
                     break;
                 case "queued":
                     searchSub.text = PlayersOnline(m.online) + "\nLooking for an opponent with the same skill… or anyone.";
@@ -282,6 +291,7 @@ namespace Colorify
                     OnDuelResult(m);
                     break;
                 case "error":
+                    if (RaceError(m.code)) break;
                     if (m.code == "update") ShowOnlineError("A new version of Colorify is out.\nReload the page or update the game to play online.");
                     else ShowOnlineError("The server didn't accept the connection. Try again later.");
                     break;
@@ -292,6 +302,8 @@ namespace Colorify
 
         private void OnConnectionLost()
         {
+            if (mode == Mode.Race || raceActive || pendingRaceMsg != null || (raceMenu != null && raceMenu.gameObject.activeSelf && raceMenu.alpha > 0.5f))
+            { CloseDuel(); RaceConnectionLost(); return; }
             bool searchingNow = ostage == OnlineStage.Searching;
             bool inMatch = ostage == OnlineStage.Playing && pendingResult == null;
             CloseDuel();
