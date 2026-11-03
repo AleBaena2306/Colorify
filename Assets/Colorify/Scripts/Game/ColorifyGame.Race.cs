@@ -106,9 +106,9 @@ namespace Colorify
             finalTitle = UIKit.Text("Title", raceFinal.transform, "", 120, UIKit.Ink, black: true);
             UIKit.Place(finalTitle.rectTransform, 0.5f, 1f, new Vector2(1000, 160), new Vector2(0, -130));
             finalSub = UIKit.Text("Sub", raceFinal.transform, "", 40, UIKit.InkSoft);
-            UIKit.Place(finalSub.rectTransform, 0.5f, 1f, new Vector2(1000, 60), new Vector2(0, -235));
+            UIKit.Place(finalSub.rectTransform, 0.5f, 1f, new Vector2(1000, 130), new Vector2(0, -260));
             finalList = UIKit.Rect("Standings", raceFinal.transform);
-            UIKit.Place(finalList, 0.5f, 1f, new Vector2(1000, 800), new Vector2(0, -720));
+            UIKit.Place(finalList, 0.5f, 1f, new Vector2(1000, 800), new Vector2(0, -740));
             var toRoom = UIKit.Button("Room", raceFinal.transform, "BACK TO ROOM", ColorifyView.TitleColors[2], new Vector2(600, 150), BackToRoom, 56);
             UIKit.Place((RectTransform)toRoom.transform, 0.5f, 0f, new Vector2(600, 150), new Vector2(0, 300));
             var fmenu = UIKit.Button("Menu", raceFinal.transform, "LEAVE", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
@@ -290,7 +290,7 @@ namespace Colorify
         {
             foreach (var cg in new[] { raceMenu, raceJoin, onlineMenu }) Hide(cg);
             roomTitle.text = "ROOM " + m.room;
-            roomSub.text = m.pub ? "Public room · anyone with Quick Play can join" : "Private room · share the code with your friends";
+            roomSub.text = m.pub ? "Public room · anyone with Quick Play can join · trophies at stake" : "Private room · share the code · just for fun, no trophies";
             bool host = m.host;
             foreach (var b in new[] { roomPlayersMinus, roomPlayersPlus, roomRoundsMinus, roomRoundsPlus }) b.gameObject.SetActive(host);
             roomPlayersValue.gameObject.SetActive(host);
@@ -382,6 +382,7 @@ namespace Colorify
                 if (lastRoom != null) foreach (var p in lastRoom.players) raceStandings.Add(new NetPlayer { slot = p.slot, name = p.name, me = p.me });
                 runStartedAt = Time.realtimeSinceStartup;
                 pausedTotal = 0f;
+                trophyNote = "";
                 Analytics.Log("game_start", ("mode", "race"), ("level_id", "room"), ("players", raceStandings.Count), ("rounds", m.total));
             }
             raceActive = true;
@@ -544,7 +545,7 @@ namespace Colorify
             NetPlayer me = raceStandings.Find(x => x.me);
             int place = me != null ? raceStandings.IndexOf(me) + 1 : 0;
             finalTitle.text = place == 1 ? ColorifyView.RainbowTitle("YOU WIN!") : place > 0 ? Ordinal(place) + " PLACE" : "RACE OVER";
-            finalSub.text = $"{raceTotal} rounds · {raceStandings.Count} players";
+            finalSub.text = $"{raceTotal} rounds · {raceStandings.Count} players" + (trophyNote != "" ? "\n" + trophyNote : "");
             for (int i = finalList.childCount - 1; i >= 0; i--) Destroy(finalList.GetChild(i).gameObject);
             for (int i = 0; i < raceStandings.Count; i++)
             {

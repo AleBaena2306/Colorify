@@ -35,6 +35,7 @@ namespace Colorify.Online
         public List<NetPlayer> players = new List<NetPlayer>();
         public int round, total, size, limit, slot, place, pts;   // rstart / rhit / rend
         public float diff;                  // rstart: dificultad de color 0→1
+        public int trophies, delta;         // welcome / trophies: total y cambio
     }
 
     [Serializable]

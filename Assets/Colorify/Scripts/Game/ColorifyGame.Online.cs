@@ -35,7 +35,8 @@ namespace Colorify
 
         // UI
         private CanvasGroup onlineMenu, duelMenu, searching, onlineResult, leaderboard;
-        private TMPro.TextMeshProUGUI duelStatus;
+        private TMPro.TextMeshProUGUI duelStatus, onlineTrophies;
+        private string trophyNote = "";   // «+30 TROPHIES …» de la última partida, para las pantallas de resultado
         private string duelFirst = "{\"t\":\"queue\"}", duelRoomCode = "";
         private bool duelPrivate;
         private TMPro.TextMeshProUGUI onlineName, onlineStatus, searchTitle, searchSub, resTitle, resScore, resInfo, resSub;
@@ -62,9 +63,11 @@ namespace Colorify
             var youLabel = UIKit.Text("YouLabel", onlineMenu.transform, "YOU PLAY AS", 32, UIKit.InkSoft, black: true);
             UIKit.Place(youLabel.rectTransform, 0.5f, 0.5f, new Vector2(900, 50), new Vector2(0, 230));
             onlineName = UIKit.Text("Name", onlineMenu.transform, "", 64, UIKit.Ink, black: true);
-            UIKit.Place(onlineName.rectTransform, 0.5f, 0.5f, new Vector2(1000, 90), new Vector2(0, 165));
-            var rename = UIKit.Button("Rename", onlineMenu.transform, "NEW NAME", UIKit.PaperDark, new Vector2(340, 90), NewName, 38);
-            UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(340, 90), new Vector2(0, 75));
+            UIKit.Place(onlineName.rectTransform, 0.5f, 0.5f, new Vector2(1000, 90), new Vector2(0, 175));
+            onlineTrophies = UIKit.Text("Trophies", onlineMenu.transform, "", 36, UIKit.Ink, black: true);
+            UIKit.Place(onlineTrophies.rectTransform, 0.5f, 0.5f, new Vector2(1000, 56), new Vector2(0, 118));
+            var rename = UIKit.Button("Rename", onlineMenu.transform, "NEW NAME", UIKit.PaperDark, new Vector2(300, 74), NewName, 34);
+            UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(300, 74), new Vector2(0, 50));
             var find = UIKit.Button("Duel", onlineMenu.transform, "DUEL  <size=60%>1 VS 1</size>", ColorifyView.TitleColors[2], new Vector2(680, 150), ShowDuelMenu, 66);
             UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -70));
             var race = UIKit.Button("Race", onlineMenu.transform, "RACE  <size=60%>UP TO 8</size>", ColorifyView.TitleColors[4], new Vector2(680, 150), ShowRace, 66);
@@ -81,7 +84,7 @@ namespace Colorify
             var dt = UIKit.Text("Title", duelMenu.transform, ColorifyView.RainbowTitle("DUEL"), 130, UIKit.Ink, black: true);
             UIKit.Place(dt.rectTransform, 0.5f, 0.5f, new Vector2(1000, 170), new Vector2(0, 560));
             var drules = UIKit.Text("Rules", duelMenu.transform,
-                "1 vs 1 in real time, same boards.\nHits add time, misses take it away.\nRun out of time with fewer hits and you lose.", 40, UIKit.InkSoft);
+                "1 vs 1 in real time, same boards. Hits add time, misses take it away.\nFind a match to win or lose trophies.\nRooms with a code are just for fun.", 38, UIKit.InkSoft);
             UIKit.Place(drules.rectTransform, 0.5f, 0.5f, new Vector2(960, 200), new Vector2(0, 370));
             var dfind = UIKit.Button("Find", duelMenu.transform, "FIND A MATCH", ColorifyView.TitleColors[2], new Vector2(680, 160), FindMatch, 70);
             UIKit.Place((RectTransform)dfind.transform, 0.5f, 0.5f, new Vector2(680, 160), new Vector2(0, 160));
@@ -122,8 +125,8 @@ namespace Colorify
             leaderboard = v.Overlay("Leaderboard", 0.95f);
             var lt = UIKit.Text("Title", leaderboard.transform, "LEADERBOARD", 96, UIKit.Ink, black: true);
             UIKit.Place(lt.rectTransform, 0.5f, 1f, new Vector2(1000, 130), new Vector2(0, -120));
-            string[] modes = { "normal", "survival", "duel" };
-            string[] labels = { "NORMAL", "SURVIVAL", "DUELS" };
+            string[] modes = { "normal", "survival", "trophies" };
+            string[] labels = { "NORMAL", "SURVIVAL", "TROPHIES" };
             for (int i = 0; i < modes.Length; i++)
             {
                 string m = modes[i];
@@ -203,6 +206,7 @@ namespace Colorify
             EnsureIdentity();
             Hide(v.menu);
             onlineName.text = save.playerName;
+            RefreshTrophies();
             onlineStatus.text = save.onlineWins + save.onlineLosses > 0 ? $"<color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>Your duels: {save.onlineWins} won · {save.onlineLosses} lost</color>" : "";
             ostage = OnlineStage.Lobby;
             Show(onlineMenu);
@@ -315,7 +319,11 @@ namespace Colorify
         {
             switch (m.t)
             {
+                case "trophies":
+                    OnTrophies(m.delta, m.trophies);
+                    break;
                 case "welcome":
+                    if (m.trophies != save.trophies) { save.trophies = m.trophies; save.Save(); RefreshTrophies(); }
                     if (ostage == OnlineStage.Searching && !queueSent) { duel.SendRaw(duelFirst); queueSent = true; }
                     if (pendingRaceMsg != null) { duel.SendRaw(pendingRaceMsg); pendingRaceMsg = null; }
                     break;
@@ -402,6 +410,7 @@ namespace Colorify
             oppOver = false;
             pendingResult = null;
             waitingResult = false;
+            trophyNote = "";
             roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime;
             timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
             v.multChip.gameObject.SetActive(false);
@@ -511,7 +520,8 @@ namespace Colorify
             else if (m.reason == "time") info = "The duel hit the time limit.";
             else if (oppInfo.ghost) info = $"You played against a ghost: a recorded run by {oppInfo.name}.";
             else info = m.r == "win" ? "Nice eyes!" : m.r == "draw" ? "Same hits. Again?" : "So close. Again?";
-            ShowDuelScreen(title, m.you, m.them, info);
+            if (!duelPrivate && !oppInfo.ghost && m.r == "draw") info += "\nNo trophies change hands on a draw.";
+            ShowDuelScreen(title, m.you, m.them, info + (trophyNote != "" ? "\n" + trophyNote : ""));
             if (m.r == "win") { save.onlineWins++; sfx.Play(Sfx.Id.Victory); juice.Punch(resTitle.transform, 0.25f, 0.4f); }
             else if (m.r == "lose") save.onlineLosses++;
             save.Save();
@@ -550,8 +560,8 @@ namespace Colorify
         {
             for (int i = lbList.childCount - 1; i >= 0; i--) Destroy(lbList.GetChild(i).gameObject);
             if (r == null || !r.ok) { lbStatus.text = "Couldn't load the leaderboard.\nCheck your connection."; return; }
-            lbStatus.text = r.top.Count == 0 ? (r.mode == "duel" ? "No duels won yet. Be the first!" : "No scores yet. Be the first!") : "";
-            string unit = r.mode == "normal" ? "hits" : r.mode == "duel" ? "wins" : "";
+            lbStatus.text = r.top.Count == 0 ? (r.mode == "trophies" ? "No trophies yet. Win a public duel or race!" : "No scores yet. Be the first!") : "";
+            string unit = r.mode == "normal" ? "hits" : r.mode == "duel" ? "wins" : r.mode == "trophies" ? "trophies" : "";
             int rows = Mathf.Min(r.top.Count, 20);
             for (int i = 0; i < rows; i++)
             {
@@ -570,7 +580,7 @@ namespace Colorify
             }
             lbMe.text = r.me != null && r.me.rank > 0
                 ? $"{save.playerName}: #{r.me.rank} of {r.total} · {UIKit.Thousands(r.me.best)} {unit}"
-                : $"{save.playerName}: no {(r.mode == "duel" ? "wins" : "score")} yet";
+                : $"{save.playerName}: no {(r.mode == "trophies" ? "trophies" : "score")} yet";
         }
 
         // Envía la puntuación al ranking global (Normal y Supervivencia). Sin conexión, simplemente no se envía.
@@ -580,6 +590,55 @@ namespace Colorify
             EnsureIdentity();
             var times = ghostTimes != null ? new List<int>(ghostTimes) : null;
             StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, save.playerName, m, score, info, times, outMs, null));
+        }
+
+        // =====================================================================
+        // Trofeos y ligas
+        // =====================================================================
+
+        private static readonly string[] LeagueNames = { "GREY", "TEAL", "SAGE", "AMBER", "CORAL", "SKY", "RAINBOW" };
+        private static readonly int[] LeagueFloors = { 0, 200, 500, 900, 1400, 2000, 3000 };
+
+        private static int LeagueIndex(int trophies)
+        {
+            int i = 0;
+            while (i + 1 < LeagueFloors.Length && trophies >= LeagueFloors[i + 1]) i++;
+            return i;
+        }
+
+        private static string LeagueLabel(int trophies)
+        {
+            int i = LeagueIndex(trophies);
+            string name = LeagueNames[i] + " LEAGUE";
+            if (i == LeagueNames.Length - 1) return ColorifyView.RainbowTitle(name);
+            Color c = i == 0 ? UIKit.InkSoft : i == 1 ? ColorifyView.TitleColors[1] : i == 2 ? ColorifyView.TitleColors[2]
+                : i == 3 ? ColorifyView.TitleColors[3] : i == 4 ? ColorifyView.TitleColors[5] : ColorifyView.TitleColors[0];
+            return $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{name}</color>";
+        }
+
+        private void RefreshTrophies()
+        {
+            if (onlineTrophies == null) return;
+            int i = LeagueIndex(save.trophies);
+            string next = i + 1 < LeagueFloors.Length ? $"  <size=75%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>· next at {UIKit.Thousands(LeagueFloors[i + 1])}</color></size>" : "";
+            onlineTrophies.text = $"{UIKit.Thousands(save.trophies)} TROPHIES  ·  {LeagueLabel(save.trophies)}{next}";
+        }
+
+        private void OnTrophies(int delta, int total)
+        {
+            int before = save.trophies;
+            save.trophies = total;
+            save.Save();
+            RefreshTrophies();
+            string sign = delta > 0 ? "+" : delta < 0 ? "–" : "±";
+            trophyNote = $"<b>{sign}{Mathf.Abs(delta)} TROPHIES</b> · {UIKit.Thousands(total)} · {LeagueLabel(total)}";
+            if (LeagueIndex(total) > LeagueIndex(before)) trophyNote += "\nNEW LEAGUE!";
+            // Si la pantalla de resultado ya está a la vista, se añade ahí
+            if (onlineResult != null && onlineResult.gameObject.activeSelf && !waitingResult && resInfo.text.IndexOf("TROPHIES") < 0)
+                resInfo.text += "\n" + trophyNote;
+            if (raceFinal != null && raceFinal.gameObject.activeSelf && finalSub.text.IndexOf("TROPHIES") < 0)
+                finalSub.text += "\n" + trophyNote;
+            if (delta > 0) sfx.Play(Sfx.Id.Card);
         }
 
         private void ResetHitRecording()

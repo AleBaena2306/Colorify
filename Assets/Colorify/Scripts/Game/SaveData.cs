@@ -32,6 +32,7 @@ namespace Colorify
         public string playerId = "";
         public string playerName = "";
         public int onlineWins, onlineLosses;
+        public int trophies;                // copia local de los trofeos (los manda el servidor)
         public int raceMaxPlayers = 8, raceRounds = 10, raceWins, racesPlayed;
 
         private const string Key = "colorify.save.v1";

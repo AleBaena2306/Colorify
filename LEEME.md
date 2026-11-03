@@ -57,7 +57,11 @@ El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloud
   pasa de 2×2 a 8×8 y los colores se parecen cada vez más. Ajustes del servidor: `worker/colorify/race.js`.
 - **Fantasmas**: si nadie busca partida en 10 s, el servidor ofrece una partida real grabada de otro jugador
   (marcada como GHOST). Se graban las partidas del modo Normal terminadas sin continuar y las de los duelos.
-- **Ranking global**: Normal (aciertos), Supervivencia (puntos) y victorias en duelos (solo contra personas).
+- **Trofeos** (como Clash Royale): solo en duelos públicos entre personas (mismo nivel: +30 / −20; contra alguien
+  con más trofeos se gana más y se pierde menos) y en carreras de salas públicas (de +25 el 1.º a −15 el último).
+  Salas privadas y fantasmas no cuentan. Nunca bajan de 0. Ligas: Grey 0, Teal 200, Sage 500, Amber 900,
+  Coral 1400, Sky 2000 y Rainbow 3000. El emparejamiento junta trofeos parecidos (la tolerancia crece con la espera).
+- **Ranking global**: Normal (aciertos), Supervivencia (puntos) y trofeos.
 - **Identidad**: id aleatorio y nombre generado («Teal Fox 42», botón NEW NAME). Sin texto libre ni datos personales.
 - `ColorifyConfig > Online`: URL del servidor (en la web se usa el dominio desde el que se juega) y si se envían puntuaciones.
 - En el editor funciona contra el servidor real: para probar un duelo, abre el juego en el editor y en el móvil
