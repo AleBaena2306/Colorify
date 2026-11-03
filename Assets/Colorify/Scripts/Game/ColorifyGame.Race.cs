@@ -51,7 +51,7 @@ namespace Colorify
             UIKit.Place((RectTransform)quick.transform, 0.5f, 0.5f, new Vector2(680, 160), new Vector2(0, 160));
             var create = UIKit.Button("Create", raceMenu.transform, "CREATE ROOM", ColorifyView.TitleColors[2], new Vector2(560, 130), RaceCreate, 54);
             UIKit.Place((RectTransform)create.transform, 0.5f, 0.5f, new Vector2(560, 130), new Vector2(0, -10));
-            var join = UIKit.Button("Join", raceMenu.transform, "JOIN WITH CODE", ColorifyView.TitleColors[0], new Vector2(560, 130), ShowJoin, 50);
+            var join = UIKit.Button("Join", raceMenu.transform, "JOIN WITH CODE", ColorifyView.TitleColors[0], new Vector2(560, 130), () => ShowJoinFor(false), 50);
             UIKit.Place((RectTransform)join.transform, 0.5f, 0.5f, new Vector2(560, 130), new Vector2(0, -160));
             raceStatus = UIKit.Text("Status", raceMenu.transform, "", 38, UIKit.InkSoft);
             UIKit.Place(raceStatus.rectTransform, 0.5f, 0.5f, new Vector2(960, 120), new Vector2(0, -320));
@@ -178,8 +178,11 @@ namespace Colorify
                      ",\"rounds\":" + Mathf.Clamp(save.raceRounds, RaceMinRounds, RaceMaxRounds) + ",\"pub\":false}");
         }
 
-        private void ShowJoin()
+        private bool joinForDuel;
+
+        private void ShowJoinFor(bool duelRoom)
         {
+            joinForDuel = duelRoom;
             sfx.Play(Sfx.Id.Click);
             joinCode = "";
             joinStatus.text = "";
@@ -195,6 +198,7 @@ namespace Colorify
             else if (k == "OK")
             {
                 if (joinCode.Length != 4) { joinStatus.text = "The code has 4 digits."; return; }
+                if (joinForDuel) { StartDuelSearch("{\"t\":\"djoin\",\"room\":\"" + joinCode + "\"}", true); return; }
                 RaceSend("{\"t\":\"join\",\"room\":\"" + joinCode + "\"}");
                 joinStatus.text = "<color=#" + ColorUtility.ToHtmlStringRGB(UIKit.InkSoft) + ">Joining…</color>";
             }
@@ -230,7 +234,16 @@ namespace Colorify
                 case "not_host": msg = "Only the host can change that."; break;
                 default: return false;
             }
-            if (raceJoin.gameObject.activeSelf && raceJoin.alpha > 0.5f) joinStatus.text = msg;
+            if (ostage == OnlineStage.Searching && duelPrivate)
+            {
+                // Código de duelo no válido: de vuelta al teclado con el aviso
+                Hide(searching);
+                ostage = OnlineStage.Lobby;
+                mode = Mode.Normal;
+                joinStatus.text = msg;
+                Show(raceJoin);
+            }
+            else if (raceJoin.gameObject.activeSelf && raceJoin.alpha > 0.5f) joinStatus.text = msg;
             else if (raceRoom.gameObject.activeSelf) roomWait.text = msg;
             else raceStatus.text = msg;
             sfx.Play(Sfx.Id.Wrong);

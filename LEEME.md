@@ -47,7 +47,8 @@ Los valores son un punto de partida razonable, **no están equilibrados**: el d�
 El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloudflare que la web:
 `/api/colorify/play` (WebSocket de los duelos), `/api/colorify/scores` (ranking) y `/api/colorify/health`.
 
-- **Duelo**: reglas del modo Normal, a la vez y con los mismos tableros (semilla del servidor). Si el rival se
+- **Duelo**: FIND A MATCH (cualquiera), CREATE ROOM (código de 4 cifras para jugar con quien quieras) o JOIN WITH CODE.
+  Las victorias en duelos privados no cuentan para el ranking. Reglas del modo Normal, a la vez y con los mismos tableros (semilla del servidor). Si el rival se
   queda sin tiempo, ganas en cuanto le superas en aciertos; si te quedas tú antes, pierdes. Sin pausa.
 - **Carrera** (2 a 8 jugadores): sala con código de 4 cifras (CREATE ROOM / JOIN WITH CODE) o QUICK PLAY,
   que entra en la sala pública abierta con más gente o crea una. El anfitrión elige jugadores (2-8), rondas (3-30)

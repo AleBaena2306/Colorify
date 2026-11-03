@@ -34,7 +34,10 @@ namespace Colorify
         private float normalPlayMs;
 
         // UI
-        private CanvasGroup onlineMenu, searching, onlineResult, leaderboard;
+        private CanvasGroup onlineMenu, duelMenu, searching, onlineResult, leaderboard;
+        private TMPro.TextMeshProUGUI duelStatus;
+        private string duelFirst = "{\"t\":\"queue\"}", duelRoomCode = "";
+        private bool duelPrivate;
         private TMPro.TextMeshProUGUI onlineName, onlineStatus, searchTitle, searchSub, resTitle, resScore, resInfo, resSub;
         private TMPro.TextMeshProUGUI oppNameText, oppHitsText, oppTagText, lbMe, lbStatus;
         private RectTransform oppPanel, lbList;
@@ -62,7 +65,7 @@ namespace Colorify
             UIKit.Place(onlineName.rectTransform, 0.5f, 0.5f, new Vector2(1000, 90), new Vector2(0, 165));
             var rename = UIKit.Button("Rename", onlineMenu.transform, "NEW NAME", UIKit.PaperDark, new Vector2(340, 90), NewName, 38);
             UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(340, 90), new Vector2(0, 75));
-            var find = UIKit.Button("Duel", onlineMenu.transform, "DUEL  <size=60%>1 VS 1</size>", ColorifyView.TitleColors[2], new Vector2(680, 150), FindMatch, 66);
+            var find = UIKit.Button("Duel", onlineMenu.transform, "DUEL  <size=60%>1 VS 1</size>", ColorifyView.TitleColors[2], new Vector2(680, 150), ShowDuelMenu, 66);
             UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -70));
             var race = UIKit.Button("Race", onlineMenu.transform, "RACE  <size=60%>UP TO 8</size>", ColorifyView.TitleColors[4], new Vector2(680, 150), ShowRace, 66);
             UIKit.Place((RectTransform)race.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -240));
@@ -72,6 +75,24 @@ namespace Colorify
             UIKit.Place(onlineStatus.rectTransform, 0.5f, 0.5f, new Vector2(960, 100), new Vector2(0, -515));
             var back = UIKit.Button("Back", onlineMenu.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
+
+            // --- Duelo: emparejamiento, sala privada o código ---
+            duelMenu = v.Overlay("DuelMenu", 0.9f);
+            var dt = UIKit.Text("Title", duelMenu.transform, ColorifyView.RainbowTitle("DUEL"), 130, UIKit.Ink, black: true);
+            UIKit.Place(dt.rectTransform, 0.5f, 0.5f, new Vector2(1000, 170), new Vector2(0, 560));
+            var drules = UIKit.Text("Rules", duelMenu.transform,
+                "1 vs 1 in real time, same boards.\nHits add time, misses take it away.\nRun out of time with fewer hits and you lose.", 40, UIKit.InkSoft);
+            UIKit.Place(drules.rectTransform, 0.5f, 0.5f, new Vector2(960, 200), new Vector2(0, 370));
+            var dfind = UIKit.Button("Find", duelMenu.transform, "FIND A MATCH", ColorifyView.TitleColors[2], new Vector2(680, 160), FindMatch, 70);
+            UIKit.Place((RectTransform)dfind.transform, 0.5f, 0.5f, new Vector2(680, 160), new Vector2(0, 160));
+            var dcreate = UIKit.Button("Create", duelMenu.transform, "CREATE ROOM", ColorifyView.TitleColors[4], new Vector2(560, 130), DuelCreate, 54);
+            UIKit.Place((RectTransform)dcreate.transform, 0.5f, 0.5f, new Vector2(560, 130), new Vector2(0, -10));
+            var djoin = UIKit.Button("Join", duelMenu.transform, "JOIN WITH CODE", ColorifyView.TitleColors[0], new Vector2(560, 130), () => ShowJoinFor(true), 50);
+            UIKit.Place((RectTransform)djoin.transform, 0.5f, 0.5f, new Vector2(560, 130), new Vector2(0, -160));
+            duelStatus = UIKit.Text("Status", duelMenu.transform, "", 38, UIKit.Danger);
+            UIKit.Place(duelStatus.rectTransform, 0.5f, 0.5f, new Vector2(960, 120), new Vector2(0, -320));
+            var dback = UIKit.Button("Back", duelMenu.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); Hide(duelMenu); Show(onlineMenu); }, 50);
+            UIKit.Place((RectTransform)dback.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
             // --- Buscando rival ---
             searching = v.Overlay("Searching", 0.9f);
@@ -92,7 +113,7 @@ namespace Colorify
             UIKit.Place(resSub.rectTransform, 0.5f, 0.5f, new Vector2(1000, 60), new Vector2(0, 260));
             resInfo = UIKit.Text("Info", onlineResult.transform, "", 40, UIKit.InkSoft);
             UIKit.Place(resInfo.rectTransform, 0.5f, 0.5f, new Vector2(960, 160), new Vector2(0, 140));
-            resAgain = UIKit.Button("Again", onlineResult.transform, "PLAY AGAIN", ColorifyView.TitleColors[2], new Vector2(600, 160), FindMatch, 68);
+            resAgain = UIKit.Button("Again", onlineResult.transform, "PLAY AGAIN", ColorifyView.TitleColors[2], new Vector2(600, 160), PlayAgainDuel, 68);
             UIKit.Place((RectTransform)resAgain.transform, 0.5f, 0.5f, new Vector2(600, 160), new Vector2(0, -80));
             var resMenu = UIKit.Button("Menu", onlineResult.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
             UIKit.Place((RectTransform)resMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -260));
@@ -144,7 +165,7 @@ namespace Colorify
 
         private void HideOnlineOverlays(bool instant)
         {
-            foreach (var cg in new[] { onlineMenu, searching, onlineResult, leaderboard }) if (cg != null) Hide(cg, instant);
+            foreach (var cg in new[] { onlineMenu, duelMenu, searching, onlineResult, leaderboard }) if (cg != null) Hide(cg, instant);
             if (oppPanel != null) oppPanel.gameObject.SetActive(false);
             HideRaceOverlays(instant);
         }
@@ -196,19 +217,47 @@ namespace Colorify
             juice.Punch(onlineName.transform, 0.15f);
         }
 
-        private void FindMatch()
+        private void FindMatch() => StartDuelSearch("{\"t\":\"queue\"}", false);
+
+        private void DuelCreate() => StartDuelSearch("{\"t\":\"dcreate\"}", true);
+
+        private void ShowDuelMenu()
         {
             sfx.Play(Sfx.Id.Click);
             EnsureIdentity();
+            duelStatus.text = "";
+            Hide(onlineMenu);
+            Show(duelMenu);
+        }
+
+        private void PlayAgainDuel()
+        {
+            if (!duelPrivate) { FindMatch(); return; }
+            sfx.Play(Sfx.Id.Click);
+            Hide(onlineResult);
+            ostage = OnlineStage.Lobby;
+            mode = Mode.Normal;
+            duelStatus.text = "";
+            Show(duelMenu);
+        }
+
+        // first: mensaje que se envía al estar conectado (queue, dcreate o djoin)
+        private void StartDuelSearch(string first, bool isPrivate)
+        {
+            sfx.Play(Sfx.Id.Click);
+            duelFirst = first;
+            duelPrivate = isPrivate;
+            duelRoomCode = "";
+            EnsureIdentity();
             if (attract != null) { StopCoroutine(attract); attract = null; }
-            foreach (var cg in new[] { v.menu, v.gameOver, onlineMenu, onlineResult }) Hide(cg);
+            foreach (var cg in new[] { v.menu, v.gameOver, onlineMenu, onlineResult, duelMenu, raceJoin }) Hide(cg);
             if (oppPanel != null) oppPanel.gameObject.SetActive(false);
             normal = null;
             mode = Mode.Online;
             state = State.Menu;
             if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, save.playerName, save.bestNormalHits); }
             queueSent = false;
-            if (duel.Welcomed) { duel.Queue(); queueSent = true; }
+            if (duel.Welcomed) { duel.SendRaw(duelFirst); queueSent = true; }
             ostage = OnlineStage.Searching;
             searchTitle.text = "CONNECTING";
             searchSub.text = "";
@@ -234,7 +283,8 @@ namespace Colorify
             Hide(searching);
             ostage = OnlineStage.Lobby;
             mode = Mode.Normal;
-            Show(onlineMenu);
+            duelStatus.text = "";
+            Show(duelMenu);
         }
 
         // =====================================================================
@@ -246,8 +296,8 @@ namespace Colorify
             if (ostage == OnlineStage.Searching && searchTitle != null)
             {
                 int dots = (int)(Time.unscaledTime * 2.5f) % 4;
-                string baseTitle = duel != null && duel.Welcomed ? "SEARCHING" : "CONNECTING";
-                searchTitle.text = baseTitle + new string('.', dots) + new string(' ', 3 - dots);
+                string baseTitle = duel != null && duel.Welcomed ? (duelPrivate ? "WAITING" : "SEARCHING") : "CONNECTING";
+                searchTitle.text = !string.IsNullOrEmpty(duelRoomCode) ? "ROOM " + duelRoomCode : baseTitle + new string('.', dots) + new string(' ', 3 - dots);
             }
             if (oppPanel != null && oppPanel.gameObject.activeSelf && state == State.Playing && !oppOver && oppTimeLeft > 0f)
                 oppTimeLeft = Mathf.Max(0f, oppTimeLeft - Time.deltaTime);
@@ -266,7 +316,7 @@ namespace Colorify
             switch (m.t)
             {
                 case "welcome":
-                    if (ostage == OnlineStage.Searching && !queueSent) { duel.Queue(); queueSent = true; }
+                    if (ostage == OnlineStage.Searching && !queueSent) { duel.SendRaw(duelFirst); queueSent = true; }
                     if (pendingRaceMsg != null) { duel.SendRaw(pendingRaceMsg); pendingRaceMsg = null; }
                     break;
                 case "room": case "rstart": case "rhit": case "rend": case "rover":
@@ -274,6 +324,10 @@ namespace Colorify
                     break;
                 case "queued":
                     searchSub.text = PlayersOnline(m.online) + "\nLooking for an opponent with the same skill… or anyone.";
+                    break;
+                case "droom":
+                    duelRoomCode = m.room;
+                    searchSub.text = "Share this code with your friend.\nThe duel starts as soon as they join.";
                     break;
                 case "noghost":
                     searchSub.text = "Nobody else is around right now.\nKeep waiting, or try again later.";
