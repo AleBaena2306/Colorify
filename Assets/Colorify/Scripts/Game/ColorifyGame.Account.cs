@@ -33,7 +33,14 @@ namespace Colorify
             : !string.IsNullOrEmpty(sessionName) ? sessionName : save.playerName;
 
         private CanvasGroup nameEditor, signInWait;
-        private TMPro.TMP_InputField nameInput;
+        private TMPro.TMP_InputField nameInput;      // ordenador y Android
+        private TMPro.TextMeshProUGUI nameDisplay;   // navegador del móvil
+        private RectTransform nameBox;
+        private string NameField
+        {
+            get => nameInput != null ? nameInput.text : nameDisplay.text;
+            set { if (nameInput != null) nameInput.text = value; else nameDisplay.text = value; }
+        }
         private TMPro.TextMeshProUGUI nameStatus, nameNote, accountLabel, signInText;
         private Button googleButton, signOutButton, deleteButton;
         private bool deleteArmed;
@@ -67,29 +74,35 @@ namespace Colorify
             UIKit.Place(box.rectTransform, 0.5f, 0.5f, new Vector2(820, 140), new Vector2(0, 470));
             var area = UIKit.Stretch(UIKit.Rect("TextArea", box.transform), 28f);
             area.gameObject.AddComponent<RectMask2D>();
-            var placeholder = UIKit.Text("Placeholder", area, "Type your name", 60, UIKit.InkSoft);
-            UIKit.Stretch(placeholder.rectTransform);
-            var text = UIKit.Text("Text", area, "", 60, UIKit.Ink, black: true);
-            UIKit.Stretch(text.rectTransform);
-            text.enableWordWrapping = false;
-            nameInput = box.gameObject.AddComponent<TMPro.TMP_InputField>();
-            nameInput.textViewport = area;
-            nameInput.textComponent = text;
-            nameInput.placeholder = placeholder;
-            nameInput.fontAsset = text.font;
-            nameInput.pointSize = 60;
-            nameInput.characterLimit = 16;
-            nameInput.lineType = TMPro.TMP_InputField.LineType.SingleLine;
-            nameInput.targetGraphic = box;
-            nameInput.onSubmit.AddListener(_ => SaveName());
-            nameInput.onValueChanged.AddListener(_ => { nameStatus.text = ""; });
+            nameBox = box.rectTransform;
             if (UsesBrowserPrompt)
             {
-                // Móvil en el navegador: al tocar la casilla se abre el cuadro de texto del navegador
-                nameInput.interactable = false;
+                // Móvil en el navegador: la casilla solo enseña el nombre; al tocarla se abre el cuadro de texto
+                // del navegador (con el teclado del móvil). Aquí no se usa TMP_InputField.
+                nameDisplay = UIKit.Text("Text", area, "", 60, UIKit.Ink, black: true);
+                UIKit.Stretch(nameDisplay.rectTransform);
                 var tap = box.gameObject.AddComponent<Button>();
                 tap.targetGraphic = box;
                 tap.onClick.AddListener(PromptName);
+            }
+            else
+            {
+                var placeholder = UIKit.Text("Placeholder", area, "Type your name", 60, UIKit.InkSoft);
+                UIKit.Stretch(placeholder.rectTransform);
+                var text = UIKit.Text("Text", area, "", 60, UIKit.Ink, black: true);
+                UIKit.Stretch(text.rectTransform);
+                text.enableWordWrapping = false;
+                nameInput = box.gameObject.AddComponent<TMPro.TMP_InputField>();
+                nameInput.textViewport = area;
+                nameInput.textComponent = text;
+                nameInput.placeholder = placeholder;
+                nameInput.fontAsset = text.font;
+                nameInput.pointSize = 60;
+                nameInput.characterLimit = 16;
+                nameInput.lineType = TMPro.TMP_InputField.LineType.SingleLine;
+                nameInput.targetGraphic = box;
+                nameInput.onSubmit.AddListener(_ => SaveName());
+                nameInput.onValueChanged.AddListener(_ => { nameStatus.text = ""; });
             }
 
             nameStatus = UIKit.Text("Status", nameEditor.transform, "", 36, UIKit.Danger);
@@ -133,11 +146,11 @@ namespace Colorify
             sfx.Play(Sfx.Id.Click);
             EnsureIdentity();
             deleteArmed = false;
-            nameInput.text = CurrentName;
+            NameField = CurrentName;
             nameStatus.text = "";
             RefreshAccountUI();
             Show(nameEditor);
-            if (!UsesBrowserPrompt)
+            if (nameInput != null)
             {
                 nameInput.ActivateInputField();   // en el ordenador se puede escribir ya; Enter guarda
                 nameInput.MoveTextEnd(false);
@@ -147,7 +160,7 @@ namespace Colorify
         private void CloseNameEditor()
         {
             sfx.Play(Sfx.Id.Click);
-            nameInput.DeactivateInputField();
+            if (nameInput != null) nameInput.DeactivateInputField();
             Hide(nameEditor);
             onlineName.text = CurrentName;
         }
@@ -172,24 +185,24 @@ namespace Colorify
         private void PromptName()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
-            string r = KP_Prompt("Your name (3-16 letters or numbers)", nameInput.text);
+            string r = KP_Prompt("Your name (3-16 letters or numbers)", NameField);
             if (r == "\u0001") return;   // cancelado
-            nameInput.text = r.Trim();
-            if (nameInput.text.Length > 0) SaveName();
+            NameField = r.Trim();
+            if (NameField.Length > 0) SaveName();
 #endif
         }
 
         private void RandomName()
         {
             sfx.Play(Sfx.Id.Click);
-            nameInput.text = PlayerNames.Random(rng);
-            juice.Punch(nameInput.transform, 0.08f);
+            NameField = PlayerNames.Random(rng);
+            juice.Punch(nameBox, 0.08f);
         }
 
         private void SaveName()
         {
-            string name = PlayerNames.Clean(nameInput.text);
-            nameInput.text = name;
+            string name = PlayerNames.Clean(NameField);
+            NameField = name;
             string problem = PlayerNames.Problem(name);
             if (problem != null) { nameStatus.text = problem; sfx.Play(Sfx.Id.Wrong); return; }
             sfx.Play(Sfx.Id.Click);
@@ -219,7 +232,7 @@ namespace Colorify
             CloseDuel();   // la próxima conexión se presenta con el nombre nuevo
             onlineName.text = CurrentName;
             nameStatus.text = $"<color=#{ColorUtility.ToHtmlStringRGB(ColorifyView.TitleColors[2])}>Saved!</color>";
-            juice.Punch(nameInput.transform, 0.1f);
+            juice.Punch(nameBox, 0.1f);
         }
 
         private static string NameErrorText(string code)
@@ -301,7 +314,7 @@ namespace Colorify
                 CloseDuel();
                 linkCode = null;
                 Hide(signInWait);
-                nameInput.text = CurrentName;
+                NameField = CurrentName;
                 onlineName.text = CurrentName;
                 RefreshTrophies();
                 RefreshAccountUI();
@@ -360,7 +373,7 @@ namespace Colorify
             save.Save();
             sessionName = null;
             CloseDuel();
-            nameInput.text = CurrentName;
+            NameField = CurrentName;
             onlineName.text = CurrentName;
             RefreshTrophies();
             RefreshAccountUI();
