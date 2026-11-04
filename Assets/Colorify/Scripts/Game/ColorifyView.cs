@@ -34,6 +34,8 @@ namespace Colorify
         public Canvas canvas;
         public RectTransform safe, game, board, fx;
         public Image swatch, swatchShadow, timerBack, timerFill;
+        public Image swatchStripes, swatchRing;      // variantes del modo Normal: rayas y memoria (anillo de tiempo)
+        public TextMeshProUGUI swatchHidden;          // «?» cuando la muestra de memoria se ha ocultado
         public TextMeshProUGUI roundLabel, scoreText, totalText, multText, countdownText, stampText, stampSub;
         public Image multChip;
         public readonly List<Tile> tiles = new List<Tile>();
@@ -125,6 +127,78 @@ namespace Colorify
             UIKit.Place(swatchShadow.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY - 14));
             swatch = UIKit.Box("Swatch", game, Color.white, 0.35f);
             UIKit.Place(swatch.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY));
+
+            // Rayas blancas sobre la muestra (con la misma forma redondeada) y «?» para la muestra oculta
+            swatchStripes = new GameObject("Stripes", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+            swatchStripes.rectTransform.SetParent(swatch.transform, false);
+            UIKit.Stretch(swatchStripes.rectTransform);
+            swatchStripes.raycastTarget = false;
+            swatchStripes.gameObject.SetActive(false);
+            swatchHidden = UIKit.Text("Hidden", swatch.transform, "?", 200, UIKit.InkSoft, black: true);
+            UIKit.Stretch(swatchHidden.rectTransform);
+            swatchHidden.gameObject.SetActive(false);
+
+            // Anillo alrededor de la muestra que se vacía mientras se ve el color (rondas de memoria)
+            swatchRing = new GameObject("Ring", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+            swatchRing.rectTransform.SetParent(game, false);
+            UIKit.Place(swatchRing.rectTransform, 0.5f, 1f, Vector2.one * (Layout.SwatchSize + 44), new Vector2(0, Layout.SwatchY));
+            swatchRing.sprite = RingSprite();
+            swatchRing.type = Image.Type.Filled;
+            swatchRing.fillMethod = Image.FillMethod.Radial360;
+            swatchRing.fillOrigin = (int)Image.Origin360.Top;
+            swatchRing.fillClockwise = false;
+            swatchRing.color = UIKit.Ink;
+            swatchRing.raycastTarget = false;
+            swatchRing.gameObject.SetActive(false);
+        }
+
+        // Rayas diagonales blancas recortadas con la forma de la muestra. coverage: parte tapada (0-1)
+        private static Sprite stripes;
+        private static float stripesCoverage = -1f;
+        public static Sprite StripesSprite(float coverage)
+        {
+            if (stripes != null && Mathf.Approximately(coverage, stripesCoverage)) return stripes;
+            const int size = 180;
+            const float radius = size * 0.175f;   // como la muestra (radio ≈ 17,5 % del lado)
+            const float period = 36f;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float cx = Mathf.Clamp(x + 0.5f, radius, size - radius), cy = Mathf.Clamp(y + 0.5f, radius, size - radius);
+                    float inside = Mathf.Clamp01(radius - Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(cx, cy)) + 0.5f);
+                    float t = Mathf.Repeat((x + y) / period, 1f);
+                    float edge = 1.5f / period;
+                    float stripe = Mathf.Clamp01(Mathf.Min(t, coverage - t) / edge + 0.5f);
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)(255f * inside * stripe));
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            stripesCoverage = coverage;
+            return stripes = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        // Contorno redondeado (para el anillo de tiempo de la muestra de memoria)
+        private static Sprite RingSprite()
+        {
+            const int size = 200;
+            const float radius = size * 0.2f, thick = 7f;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    // Distancia con signo al rectángulo redondeado (negativa dentro)
+                    float qx = Mathf.Abs(x + 0.5f - size / 2f) - (size / 2f - radius);
+                    float qy = Mathf.Abs(y + 0.5f - size / 2f) - (size / 2f - radius);
+                    float dist = new Vector2(Mathf.Max(qx, 0f), Mathf.Max(qy, 0f)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0f) - radius;
+                    float a = Mathf.Clamp01(thick / 2f - Mathf.Abs(dist + thick / 2f + 1f) + 0.5f);
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
         }
 
         private void BuildBoard()

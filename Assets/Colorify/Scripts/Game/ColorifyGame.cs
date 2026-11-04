@@ -35,6 +35,9 @@ namespace Colorify
         private float runStartedAt, pausedAt, pausedTotal;
         private bool continueOffered;
         private Coroutine attract;
+        // Variante del tablero actual (modo Normal y duelo): rayas o memoria
+        private NormalRun.Variant boardVariant = NormalRun.Variant.Plain;
+        private float flashLeft, flashRevealLeft;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -305,10 +308,15 @@ namespace Colorify
             normal.streak++;
             if (normal.streak > normal.bestStreak) normal.bestStreak = normal.streak;
             float bonus = normal.HitBonus;
-            timeLeft = Mathf.Min(timeLeft + bonus, normal.MaxTime);
+            // Un acierto siempre te deja como mínimo en el 25 % del tiempo (normalHitFloorFraction)
+            float floor = (normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime) * cfg.normalHitFloorFraction;
+            float before = timeLeft;
+            timeLeft = Mathf.Min(Mathf.Max(timeLeft + bonus, floor), normal.MaxTime);
+            bonus = timeLeft - before;
             if (normal.MaxTime == float.MaxValue) roundTime = Mathf.Max(roundTime, timeLeft);
-            RecordHit(current.size);
-            if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft, current.size);
+            int code = current.size + 10 * (int)boardVariant;
+            RecordHit(code);
+            if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft, code);
 
             Color col = current.TargetColor;
             juice.Punch(tile.transform, 0.2f);
@@ -317,12 +325,15 @@ namespace Colorify
             juice.Punch(v.scoreText.transform, 0.12f, 0.18f);
             sfx.Play(Sfx.Id.Hit, 1f + 0.02f * Mathf.Min(normal.streak, 25));
             Haptics.Pulse(10);
-            // Cada vez que la cuadrícula crece, un pequeño aviso
-            if (normal.hits % Mathf.Max(1, cfg.normalHitsPerGridStep) == 0 && normal.GridSize > current.size)
+            // Aviso cuando crece la cuadrícula o cambia la variante de la muestra
+            var nextVariant = normal.BoardVariant;
+            string notice = normal.GridSize != current.size ? $"{normal.GridSize}×{normal.GridSize}"
+                : nextVariant != boardVariant ? (nextVariant == NormalRun.Variant.Stripes ? "STRIPES!" : nextVariant == NormalRun.Variant.Flash ? "REMEMBER IT!" : "") : "";
+            if (notice != "")
             {
-                v.stampSub.text = $"{normal.GridSize}×{normal.GridSize}";
+                v.stampSub.text = notice;
                 juice.PopIn(v.stampSub.transform, 0f, 0.3f, 0.5f);
-                StartCoroutine(ClearStampSub(0.8f));
+                StartCoroutine(ClearStampSub(1f));
             }
             NewBoard();
         }
@@ -336,6 +347,7 @@ namespace Colorify
         private IEnumerator NormalOver()
         {
             state = State.Resolving;
+            if (boardVariant == NormalRun.Variant.Flash) { v.swatchRing.gameObject.SetActive(false); SetSwatchHidden(false); }   // al perder se ve el color
             sfx.Play(Sfx.Id.Lose);
             Haptics.Pulse(80);
             juice.Shake(v.board, 26f, 0.4f);
@@ -435,16 +447,59 @@ namespace Colorify
 
         private void NewBoard()
         {
+            bool variants = normal != null;
             current = normal != null
                 ? ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight,
                     mode == Mode.Online ? DuelBoardRng() : rng)
                 : ColorBoardGenerator.Generate(run, rng);
             ShowBoard(current);
+            if (variants) ApplyVariant(normal.BoardVariant);
             boardShownAt = Time.time;
+        }
+
+        // Rayas: franjas blancas sobre la muestra. Memoria: el color se ve unos segundos (con un anillo que se
+        // vacía) y luego se oculta; al fallar se vuelve a ver un momento.
+        private void ApplyVariant(NormalRun.Variant variant)
+        {
+            boardVariant = variant;
+            v.swatchStripes.gameObject.SetActive(variant == NormalRun.Variant.Stripes);
+            if (variant == NormalRun.Variant.Stripes) v.swatchStripes.sprite = ColorifyView.StripesSprite(cfg.normalStripeCoverage);
+            flashLeft = variant == NormalRun.Variant.Flash ? cfg.normalFlashSeconds : 0f;
+            flashRevealLeft = 0f;
+            v.swatchRing.gameObject.SetActive(variant == NormalRun.Variant.Flash);
+            v.swatchRing.fillAmount = 1f;
+            SetSwatchHidden(false);
+        }
+
+        private void SetSwatchHidden(bool hidden)
+        {
+            if (current == null) return;
+            v.swatch.color = hidden ? UIKit.PaperDark : current.TargetColor;
+            v.swatchHidden.gameObject.SetActive(hidden);
+        }
+
+        private void UpdateFlash(float dt)
+        {
+            if (boardVariant != NormalRun.Variant.Flash) return;
+            if (flashLeft > 0f)
+            {
+                flashLeft -= dt;
+                v.swatchRing.fillAmount = Mathf.Clamp01(flashLeft / Mathf.Max(0.01f, cfg.normalFlashSeconds));
+                if (flashLeft <= 0f) { v.swatchRing.gameObject.SetActive(false); SetSwatchHidden(true); }
+            }
+            else if (flashRevealLeft > 0f)
+            {
+                flashRevealLeft -= dt;
+                if (flashRevealLeft <= 0f) SetSwatchHidden(true);
+            }
         }
 
         private void ShowBoard(ColorBoard b)
         {
+            boardVariant = NormalRun.Variant.Plain;
+            v.swatchStripes.gameObject.SetActive(false);
+            v.swatchRing.gameObject.SetActive(false);
+            v.swatchHidden.gameObject.SetActive(false);
             v.LayoutTiles(b.size);
             for (int i = 0; i < b.tiles.Count; i++)
             {
@@ -495,8 +550,14 @@ namespace Colorify
             else { run.wrongTaps++; penalty = roundTime * cfg.wrongTapPenaltyFraction; }
             wrongThisRound++;
             timeLeft -= penalty;
-            if (normal != null) RecordMiss(current.size);
-            if (mode == Mode.Online && normal != null) duel?.Miss(normal.hits, timeLeft, current.size);
+            if (normal != null)
+            {
+                int code = current.size + 10 * (int)boardVariant;
+                RecordMiss(code);
+                if (mode == Mode.Online) duel?.Miss(normal.hits, timeLeft, code);
+                // Memoria: al fallar, la muestra se vuelve a ver un momento
+                if (boardVariant == NormalRun.Variant.Flash && flashLeft <= 0f) { flashRevealLeft = cfg.normalFlashOnMiss; SetSwatchHidden(false); juice.Punch(v.swatch.transform, 0.12f, 0.2f); }
+            }
             juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
             juice.Shake(v.board, 8f, 0.2f);
             juice.ColorFlash(v.timerFill, UIKit.Danger, 0.35f);
@@ -519,6 +580,7 @@ namespace Colorify
             else if (state == State.Playing)
             {
                 timeLeft -= Mathf.Min(Time.deltaTime, 0.1f);
+                if (normal != null) UpdateFlash(Mathf.Min(Time.deltaTime, 0.1f));
 #if UNITY_EDITOR
                 if (run != null && KeyPressed("n")) { run.roundScore = run.Target; StartCoroutine(RoundCleared()); return; }   // trampa: superar ronda
                 if (KeyPressed("k")) timeLeft = 0f;                                                                 // trampa: perder

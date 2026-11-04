@@ -226,7 +226,9 @@ namespace Colorify
             var ci = System.Globalization.CultureInfo.InvariantCulture;
             return "{\"s\":" + cfg.normalStartTime.ToString(ci) + ",\"m\":" + cfg.normalMaxTime.ToString(ci) + ",\"b\":" + cfg.normalHitBonus.ToString(ci) +
                    ",\"d\":" + cfg.normalBonusDecayPerHit.ToString(ci) + ",\"n\":" + cfg.normalHitBonusMin.ToString(ci) + ",\"p\":" + cfg.normalMissPenalty.ToString(ci) +
-                   ",\"g0\":" + cfg.startGridSize + ",\"gs\":" + cfg.normalHitsPerGridStep + ",\"gm\":" + cfg.maxGridSize + "}";
+                   ",\"g0\":" + cfg.startGridSize + ",\"gs\":" + cfg.normalHitsPerGridStep + ",\"gm\":" + cfg.maxGridSize +
+                   ",\"fl\":" + cfg.normalHitFloorFraction.ToString(ci) + ",\"ve\":" + (cfg.normalVariants ? 1 : 0) +
+                   ",\"vf\":" + cfg.normalVariantRoundsFirst + ",\"vp\":" + cfg.normalVariantRoundsPerGrid + "}";
         }
 
         private void DuelCreate() => StartDuelSearch("{\"t\":\"dcreate\"}", true);

@@ -144,6 +144,21 @@ namespace Colorify
         public float normalSimilarity = 1f;
         [Tooltip("Modo Normal: segundos que, al perder, se señala y bota la ficha correcta antes de la pantalla de fin.")]
         public float normalRevealSeconds = 2.2f;
+        [Tooltip("Modo Normal: un acierto siempre te deja como mínimo en esta fracción del tiempo máximo (0,25 = 25 %)")]
+        [Range(0, 1)] public float normalHitFloorFraction = 0.25f;
+
+        [Header("Modo Normal: variantes de la muestra entre tamaños de cuadrícula")]
+        [Tooltip("Tras los aciertos normales de cada tamaño llegan rondas con la muestra rayada y rondas de memoria")]
+        public bool normalVariants = true;
+        [Tooltip("Rondas de cada variante en el primer tamaño (2×2); se suma «Por tamaño» en cada tamaño siguiente")]
+        public int normalVariantRoundsFirst = 1;
+        public int normalVariantRoundsPerGrid = 1;
+        [Tooltip("Memoria: segundos que se ve el color de la muestra")]
+        public float normalFlashSeconds = 2f;
+        [Tooltip("Memoria: segundos que vuelve a verse el color tras un fallo")]
+        public float normalFlashOnMiss = 0.6f;
+        [Tooltip("Rayas: parte de la muestra tapada por franjas blancas (0-1)")]
+        [Range(0.1f, 0.8f)] public float normalStripeCoverage = 0.45f;
 
         [Header("Online")]
         [Tooltip("Servidor de Kovu's Pride (el portfolio). En la web se usa el dominio desde el que se juega.")]

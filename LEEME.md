@@ -42,6 +42,14 @@ Los valores son un punto de partida razonable, **no están equilibrados**: el d�
 - Prueba en el navegador: **COLORIFY > Build > Web: prueba rápida (solo PC, sin publicar)**.
 - **COLORIFY > Build > Web (móvil + PC)** compila y publica en el portfolio (la ficha sigue en WIP).
 
+## Modo Normal: suelo de tiempo y variantes
+
+- Un acierto siempre te deja como mínimo en el 25 % del tiempo máximo (`normalHitFloorFraction`).
+- En cada tamaño de cuadrícula: N aciertos normales (`normalHitsPerGridStep`), luego k con la muestra **rayada**
+  (franjas blancas) y k de **memoria** (el color se ve 2 s con un anillo que se vacía; al fallar vuelve a verse
+  un momento). k empieza en 1 en el 2×2 y sube 1 por tamaño; en el 8×8 el ciclo se repite. Ajustes en
+  ColorifyConfig (sección «variantes de la muestra»). Lo mismo en los duelos; el bot del servidor usa la misma cuenta.
+
 ## Online (duelos y ranking global)
 
 El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloudflare que la web:
