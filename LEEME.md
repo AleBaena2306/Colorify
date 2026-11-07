@@ -62,7 +62,8 @@ ni en el ranking, pero su código sigue en el proyecto (`RunState`, cartas) por 
 - **Puntos**: cada acierto da puntos según el tamaño, la dificultad aprendida del tablero y la rapidez frente al
   tiempo medio de los jugadores en ese tablero. Los aciertos rápidos encadenados suben el multiplicador (X2!, X3!…
   hasta `chainMax`); un acierto lento o un fallo lo devuelve a x1. El chip de la esquina muestra el multiplicador.
-- **Ritmo**: el servidor (`GET /api/colorify/tuning`) ajusta cuánto tiempo da cada acierto para que una partida
+- **Ritmo**: el servidor (`GET /api/colorify/tuning`) da un multiplicador de todo el tiempo de la partida (inicial,
+  máximo, mínimo tras acertar y tiempo por acierto) para que una partida
   dure unos 5 minutos, con las partidas acabadas por tiempo (no las abandonadas). Sin conexión, valores de referencia.
 - Un acierto siempre te deja como mínimo en el 25 % del tiempo máximo (`normalHitFloorFraction`).
 - **Avisos**: al entrar en un especial nuevo o crecer la cuadrícula sale un aviso grande con rebote entre la muestra

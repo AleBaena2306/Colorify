@@ -614,6 +614,7 @@ namespace Colorify
             StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, CurrentName, m, score, info, s, s != null ? misses : null, r =>
             {
                 if (r != null && !r.ok && r.error == "bad_name") sessionName = null;   // nombre reservado por otra cuenta
+                if (m == "points") StartCoroutine(LoadTuning());   // ritmo ya corregido para la siguiente partida
             }, playMs, end));
         }
 

@@ -17,7 +17,12 @@ namespace Colorify
         public int chain = 1, bestChain = 1;
         public BoardKind kind = BoardKind.Plain;
 
-        public NormalRun(ColorifyConfig cfg, bool specials = false) { this.cfg = cfg; this.specials = specials; }
+        public NormalRun(ColorifyConfig cfg, bool specials = false)
+        {
+            this.cfg = cfg;
+            this.specials = specials;
+            pace = specials ? Mathf.Clamp(Tuning.Current.pace, 0.5f, 4f) : 1f;
+        }
 
         // Variante del tablero: normal, muestra con franjas blancas o muestra que solo se ve unos segundos
         public enum Variant { Plain = 0, Stripes = 1, Flash = 2 }
@@ -51,10 +56,15 @@ namespace Colorify
         // Código para las estadísticas del bot: tamaño + 10 × variante
         public int StatsCode => GridSize + 10 * (int)BoardVariant;
         public float ColorDifficulty => Mathf.Clamp01(hits / (float)Mathf.Max(1, cfg.normalHitsToMaxColorDifficulty));
-        // Con las reglas nuevas, el servidor ajusta el ritmo (Tuning.pace) para que una partida dure unos 5 minutos
-        public float HitBonus => Mathf.Max(cfg.normalHitBonusMin, cfg.normalHitBonus - cfg.normalBonusDecayPerHit * hits) * (specials ? Mathf.Clamp(Tuning.Current.pace, 0.4f, 3f) : 1f);
+        // Con las reglas nuevas, el servidor ajusta el ritmo (Tuning.pace) para que una partida dure unos 5 minutos.
+        // Multiplica todo el tiempo de la partida: el inicial, el máximo (y con él el mínimo que deja cada acierto)
+        // y el que da cada acierto. Se fija al empezar, para que no cambie a mitad de partida.
+        private readonly float pace = 1f;
+        public float Pace => pace;
+        public float HitBonus => Mathf.Max(cfg.normalHitBonusMin, cfg.normalHitBonus - cfg.normalBonusDecayPerHit * hits) * pace;
         public float MissPenalty => cfg.normalMissPenalty;
-        public float MaxTime => cfg.normalMaxTime > 0 ? cfg.normalMaxTime : float.MaxValue;
+        public float MaxTime => cfg.normalMaxTime > 0 ? cfg.normalMaxTime * pace : float.MaxValue;
+        public float StartTime => cfg.normalStartTime * pace;
         // Separación mínima de color según los aciertos (cuanto más avanzas, más se parecen los matices)
         public float MinSeparation => Mathf.Lerp(cfg.normalSeparationEasy, cfg.normalSeparationHard, ColorDifficulty) / Mathf.Max(0.05f, cfg.normalSimilarity);
     }

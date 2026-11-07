@@ -324,8 +324,8 @@ namespace Colorify
             normal = m == Mode.Normal ? new NormalRun(cfg, specials: true) : null;
             if (normal != null)
             {
-                roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime;
-                timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
+                roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : normal.StartTime;
+                timeLeft = Mathf.Min(normal.StartTime, normal.MaxTime);
             }
             v.multChip.gameObject.SetActive(m == Mode.Survival || m == Mode.Normal);
             v.multText.text = "x1";
@@ -347,8 +347,8 @@ namespace Colorify
 
         private void BeginNormal()
         {
-            roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime;
-            timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
+            roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : normal.StartTime;
+            timeLeft = Mathf.Min(normal.StartTime, normal.MaxTime);
             lastTickSecond = -1;
             NewBoard();
             state = State.Playing;
@@ -376,7 +376,7 @@ namespace Colorify
             if (normal.streak > normal.bestStreak) normal.bestStreak = normal.streak;
             float bonus = normal.HitBonus;
             // Un acierto siempre te deja como mínimo en el 25 % del tiempo (normalHitFloorFraction)
-            float floor = (normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime) * cfg.normalHitFloorFraction;
+            float floor = (normal.MaxTime < float.MaxValue ? normal.MaxTime : normal.StartTime) * cfg.normalHitFloorFraction;
             float before = timeLeft;
             timeLeft = Mathf.Min(Mathf.Max(timeLeft + bonus, floor), normal.MaxTime);
             bonus = timeLeft - before;
@@ -1140,7 +1140,7 @@ namespace Colorify
                 if (!rewarded) { v.overContinue.gameObject.SetActive(false); return; }
                 normal.continueUsed = true;
                 Hide(v.gameOver);
-                timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
+                timeLeft = Mathf.Min(normal.StartTime, normal.MaxTime);
                 StartCoroutine(CountdownThen(() =>
                 {
                     lastTickSecond = -1;
