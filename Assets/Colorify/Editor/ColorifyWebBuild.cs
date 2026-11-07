@@ -31,6 +31,7 @@ public static class ColorifyWebBuild
     [MenuItem("COLORIFY/Build/Web: prueba rápida (solo PC, sin publicar)")]
     public static void QuickTest()
     {
+        if (!ScriptsUpToDate()) return;
         if (!EnsureWebPlatform()) return;
         string outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Builds", "WebTest"));
         if (!BuildVariant("pc", WebGLTextureSubtarget.DXT, outDir, quick: true)) return;
@@ -53,8 +54,30 @@ public static class ColorifyWebBuild
         GetPortfolioPath(askIfMissing: true);
     }
 
+    // Si los scripts han cambiado en disco (por ejemplo, tras un pull con Unity abierto) y el Editor aún no los ha
+    // recompilado, la build falla con «script class layout is incompatible». Antes de compilar se refrescan los
+    // assets: si hay que recompilar, se avisa y se para; al terminar la compilación basta con volver a pulsar.
+    private static bool ScriptsUpToDate()
+    {
+        AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        if (EditorApplication.isCompiling)
+        {
+            Debug.LogWarning("[WebBuild] Había cambios en los scripts y Unity los está recompilando. Cuando termine, vuelve a lanzar la build.");
+            EditorUtility.DisplayDialog("Colorify · Build web", "Unity está recompilando los scripts que han cambiado.\n\nCuando termine (sin la rueda de carga abajo a la derecha), vuelve a lanzar la build.", "OK");
+            return false;
+        }
+        if (EditorUtility.scriptCompilationFailed)
+        {
+            Debug.LogError("[WebBuild] Hay errores de compilación en la consola: corrígelos antes de compilar la web.");
+            EditorUtility.DisplayDialog("Colorify · Build web", "Hay errores de compilación en la consola. Corrígelos antes de compilar la web.", "OK");
+            return false;
+        }
+        return true;
+    }
+
     private static void Run(bool publish)
     {
+        if (!ScriptsUpToDate()) return;
         string portfolio = GetPortfolioPath();
         if (string.IsNullOrEmpty(portfolio)) return;
         if (!EnsureWebPlatform()) return;
