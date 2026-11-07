@@ -63,7 +63,8 @@ namespace Colorify
             var t = UIKit.Text("Title", onlineMenu.transform, ColorifyView.RainbowTitle("ONLINE"), 120, UIKit.Ink, black: true);
             UIKit.Place(t.rectTransform, 0.5f, 0.5f, new Vector2(1000, 160), new Vector2(0, 560));
             var rules = UIKit.Text("Rules", onlineMenu.transform,
-                "DUEL: 1 vs 1, same boards. Hits add time, misses take it away.\nRACE: up to 8 players. First to tap the color scores the most.", 38, UIKit.InkSoft);
+                "DUEL: 1 vs 1 on the same boards.\nRACE: up to 8 players. First tap wins.", 38, UIKit.InkSoft);
+            rules.enableWordWrapping = true;   // por si una línea no cabe en pantallas estrechas
             UIKit.Place(rules.rectTransform, 0.5f, 0.5f, new Vector2(960, 200), new Vector2(0, 380));
             var youLabel = UIKit.Text("YouLabel", onlineMenu.transform, "YOU PLAY AS", 32, UIKit.InkSoft, black: true);
             UIKit.Place(youLabel.rectTransform, 0.5f, 0.5f, new Vector2(900, 50), new Vector2(0, 230));
@@ -89,7 +90,8 @@ namespace Colorify
             var dt = UIKit.Text("Title", duelMenu.transform, ColorifyView.RainbowTitle("DUEL"), 130, UIKit.Ink, black: true);
             UIKit.Place(dt.rectTransform, 0.5f, 0.5f, new Vector2(1000, 170), new Vector2(0, 560));
             var drules = UIKit.Text("Rules", duelMenu.transform,
-                "1 vs 1 in real time, same boards. Hits add time, misses take it away.\nFind a match to win or lose trophies.\nRooms with a code are just for fun.", 38, UIKit.InkSoft);
+                "1 vs 1 in real time, on the same boards.\nFind a match to win or lose trophies.\nRooms with a code are just for fun.", 38, UIKit.InkSoft);
+            drules.enableWordWrapping = true;
             UIKit.Place(drules.rectTransform, 0.5f, 0.5f, new Vector2(960, 200), new Vector2(0, 370));
             var dfind = UIKit.Button("Find", duelMenu.transform, "FIND A MATCH", ColorifyView.TitleColors[2], new Vector2(680, 160), FindMatch, 70);
             UIKit.Place((RectTransform)dfind.transform, 0.5f, 0.5f, new Vector2(680, 160), new Vector2(0, 160));
