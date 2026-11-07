@@ -37,6 +37,8 @@ namespace Colorify
         public Image swatchStripes, swatchRing;      // variantes del modo Normal: rayas y memoria (anillo de tiempo)
         public TextMeshProUGUI swatchHidden;          // «?» cuando la muestra de memoria se ha ocultado
         public TextMeshProUGUI roundLabel, scoreText, totalText, multText, countdownText, stampText, stampSub;
+        public TextMeshProUGUI banner;                // aviso grande de especiales y de multiplicador (X2!, X3!…)
+        public Vector2 swatchBase, shadowBase;        // posición de reposo de la muestra (para tambaleo y giro)
         public Image multChip;
         public readonly List<Tile> tiles = new List<Tile>();
 
@@ -127,6 +129,8 @@ namespace Colorify
             UIKit.Place(swatchShadow.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY - 14));
             swatch = UIKit.Box("Swatch", game, Color.white, 0.35f);
             UIKit.Place(swatch.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY));
+            swatchBase = swatch.rectTransform.anchoredPosition;
+            shadowBase = swatchShadow.rectTransform.anchoredPosition;
 
             // Rayas blancas sobre la muestra (con la misma forma redondeada) y «?» para la muestra oculta
             swatchStripes = new GameObject("Stripes", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
@@ -152,12 +156,14 @@ namespace Colorify
             swatchRing.gameObject.SetActive(false);
         }
 
-        // Rayas diagonales blancas recortadas con la forma de la muestra. coverage: parte tapada (0-1)
-        private static Sprite stripes;
-        private static float stripesCoverage = -1f;
-        public static Sprite StripesSprite(float coverage)
+        // Rayas diagonales (blancas; se tiñen de negro para las rayas oscuras) recortadas con la forma de la
+        // muestra. coverage: parte tapada (0-1)
+        private static readonly Dictionary<int, Sprite> stripesCache = new Dictionary<int, Sprite>();
+        public static Sprite StripesSprite(float coverage, Shape shape = Shape.Square)
         {
-            if (stripes != null && Mathf.Approximately(coverage, stripesCoverage)) return stripes;
+            int key = (int)shape * 1000 + Mathf.RoundToInt(coverage * 100f);
+            Sprite cached;
+            if (stripesCache.TryGetValue(key, out cached) && cached != null) return cached;
             const int size = 180;
             const float radius = size * 0.175f;   // como la muestra (radio ≈ 17,5 % del lado)
             const float period = 36f;
@@ -166,8 +172,13 @@ namespace Colorify
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
                 {
-                    float cx = Mathf.Clamp(x + 0.5f, radius, size - radius), cy = Mathf.Clamp(y + 0.5f, radius, size - radius);
-                    float inside = Mathf.Clamp01(radius - Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(cx, cy)) + 0.5f);
+                    float inside;
+                    if (shape == Shape.Square)
+                    {
+                        float cx = Mathf.Clamp(x + 0.5f, radius, size - radius), cy = Mathf.Clamp(y + 0.5f, radius, size - radius);
+                        inside = Mathf.Clamp01(radius - Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(cx, cy)) + 0.5f);
+                    }
+                    else inside = ShapeCoverage(shape, x, y, size);
                     float t = Mathf.Repeat((x + y) / period, 1f);
                     float edge = 1.5f / period;
                     float stripe = Mathf.Clamp01(Mathf.Min(t, coverage - t) / edge + 0.5f);
@@ -175,8 +186,72 @@ namespace Colorify
                 }
             tex.SetPixels32(px);
             tex.Apply(false, true);
-            stripesCoverage = coverage;
-            return stripes = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            stripesCache[key] = sprite;
+            return sprite;
+        }
+
+        // ---------------- Formas (círculo, triángulo, rombo) ----------------
+
+        // Cobertura (0-1, con antialias) del píxel (x, y) de una imagen cuadrada de lado «size»
+        private static float ShapeCoverage(Shape shape, int x, int y, int size)
+        {
+            float half = size * 0.5f;
+            float u = (x + 0.5f - half) / half, v = (y + 0.5f - half) / half;   // -1…1
+            float px = 1f / half;                                                // un píxel en esas unidades
+            float d;                                                             // distancia con signo al borde (positiva dentro)
+            switch (shape)
+            {
+                case Shape.Circle: d = 0.96f - Mathf.Sqrt(u * u + v * v); break;
+                case Shape.Diamond: d = (0.98f - (Mathf.Abs(u) + Mathf.Abs(v))) * 0.7071f; break;
+                case Shape.Triangle:
+                {
+                    // Triángulo equilátero apuntando hacia arriba, centrado en su caja
+                    const float bottom = -0.82f, top = 0.92f;
+                    float slope = (top - bottom) / 0.98f;
+                    float sideD = (top - slope * Mathf.Abs(u) - v) / Mathf.Sqrt(1f + slope * slope);
+                    d = Mathf.Min(v - bottom, sideD);
+                    break;
+                }
+                default: d = 1f; break;
+            }
+            return Mathf.Clamp01(d / px + 0.5f);
+        }
+
+        private static readonly Dictionary<Shape, Sprite> shapeCache = new Dictionary<Shape, Sprite>();
+        public static Sprite ShapeSprite(Shape shape)
+        {
+            Sprite cached;
+            if (shapeCache.TryGetValue(shape, out cached) && cached != null) return cached;
+            const int size = 160;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)(255f * ShapeCoverage(shape, x, y, size)));
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            shapeCache[shape] = sprite;
+            return sprite;
+        }
+
+        // Cambia la forma de una imagen. El cuadrado es el de siempre (sprite redondeado, 9-slice)
+        public static void SetShape(Image img, Shape shape, float squareRadius)
+        {
+            if (shape == Shape.Square)
+            {
+                img.sprite = UIKit.Rounded;
+                img.type = Image.Type.Sliced;
+                img.pixelsPerUnitMultiplier = squareRadius;
+                img.preserveAspect = false;
+            }
+            else
+            {
+                img.sprite = ShapeSprite(shape);
+                img.type = Image.Type.Simple;
+                img.preserveAspect = true;
+            }
         }
 
         // Contorno redondeado (para el anillo de tiempo de la muestra de memoria)
@@ -222,6 +297,12 @@ namespace Colorify
             UIKit.Place(stampText.rectTransform, 0.5f, 0f, new Vector2(1000, 200), board.anchoredPosition + new Vector2(0, 60));
             stampSub = UIKit.Text("StampSub", game, "", 56, UIKit.Ink, black: true);
             UIKit.Place(stampSub.rectTransform, 0.5f, 0f, new Vector2(1000, 90), board.anchoredPosition - new Vector2(0, 80));
+
+            // Aviso grande entre la muestra y el tablero (entra con rebote y se va hacia arriba)
+            banner = UIKit.Text("Banner", game, "", 104, UIKit.Ink, black: true);
+            UIKit.Place(banner.rectTransform, 0.5f, 0f, new Vector2(1060, 160), new Vector2(0, Layout.BoardBottom + Layout.BoardSize + 40));
+            banner.raycastTarget = false;
+            banner.enableWordWrapping = false;
         }
 
         public void LayoutTiles(int n)

@@ -10,13 +10,19 @@ namespace Colorify
         public readonly ColorifyConfig cfg;
         public int hits, misses, streak, bestStreak;
         public bool continueUsed;
+        // Reglas nuevas (modo Normal): calentamiento, cuadrícula hasta 5×5, formas y efectos especiales y puntos.
+        // El duelo 1v1 las tiene desactivadas y sigue con las de siempre (aciertos y rayas/memoria por tamaño).
+        public readonly bool specials;
+        public long points;
+        public int chain = 1, bestChain = 1;
+        public BoardKind kind = BoardKind.Plain;
 
-        public NormalRun(ColorifyConfig cfg) { this.cfg = cfg; }
+        public NormalRun(ColorifyConfig cfg, bool specials = false) { this.cfg = cfg; this.specials = specials; }
 
         // Variante del tablero: normal, muestra con franjas blancas o muestra que solo se ve unos segundos
         public enum Variant { Plain = 0, Stripes = 1, Flash = 2 }
 
-        public int GridSize { get { int size; Variant v; Phase(cfg, hits, out size, out v); return size; } }
+        public int GridSize { get { if (specials) return Progression.GridSize(cfg, hits); int size; Variant v; Phase(cfg, hits, out size, out v); return size; } }
         public Variant BoardVariant { get { int size; Variant v; Phase(cfg, hits, out size, out v); return v; } }
 
         // Recorrido por tamaños: N aciertos normales (normalHitsPerGridStep), luego k con rayas y k de memoria,
@@ -45,7 +51,8 @@ namespace Colorify
         // Código para las estadísticas del bot: tamaño + 10 × variante
         public int StatsCode => GridSize + 10 * (int)BoardVariant;
         public float ColorDifficulty => Mathf.Clamp01(hits / (float)Mathf.Max(1, cfg.normalHitsToMaxColorDifficulty));
-        public float HitBonus => Mathf.Max(cfg.normalHitBonusMin, cfg.normalHitBonus - cfg.normalBonusDecayPerHit * hits);
+        // Con las reglas nuevas, el servidor ajusta el ritmo (Tuning.pace) para que una partida dure unos 5 minutos
+        public float HitBonus => Mathf.Max(cfg.normalHitBonusMin, cfg.normalHitBonus - cfg.normalBonusDecayPerHit * hits) * (specials ? Mathf.Clamp(Tuning.Current.pace, 0.4f, 3f) : 1f);
         public float MissPenalty => cfg.normalMissPenalty;
         public float MaxTime => cfg.normalMaxTime > 0 ? cfg.normalMaxTime : float.MaxValue;
         // Separación mínima de color según los aciertos (cuanto más avanzas, más se parecen los matices)

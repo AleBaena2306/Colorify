@@ -49,7 +49,7 @@ namespace Colorify
         private RectTransform oppPanel, lbList;
         private Image oppTimerBack, oppTimerFill;
         private readonly Dictionary<string, Image> lbTabs = new Dictionary<string, Image>();
-        private string lbMode = "normal";
+        private string lbMode = "points";
         private Button resAgain;
 
         // =====================================================================
@@ -130,13 +130,14 @@ namespace Colorify
             leaderboard = v.Overlay("Leaderboard", 0.95f);
             var lt = UIKit.Text("Title", leaderboard.transform, "LEADERBOARD", 96, UIKit.Ink, black: true);
             UIKit.Place(lt.rectTransform, 0.5f, 1f, new Vector2(1000, 130), new Vector2(0, -120));
-            string[] modes = { "normal", "survival", "trophies" };
-            string[] labels = { "NORMAL", "SURVIVAL", "TROPHIES" };
+            // Normal (puntos) y trofeos. Supervivencia ya no está en el menú, así que tampoco su ranking.
+            string[] modes = { "points", "trophies" };
+            string[] labels = { "NORMAL", "TROPHIES" };
             for (int i = 0; i < modes.Length; i++)
             {
                 string m = modes[i];
                 var tab = UIKit.Button("Tab" + m, leaderboard.transform, labels[i], UIKit.PaperDark, new Vector2(300, 100), () => ShowLeaderboard(m), 40);
-                UIKit.Place((RectTransform)tab.transform, 0.5f, 1f, new Vector2(300, 100), new Vector2(-320 + i * 320, -260));
+                UIKit.Place((RectTransform)tab.transform, 0.5f, 1f, new Vector2(300, 100), new Vector2(-160 + i * 320, -260));
                 lbTabs[m] = tab.GetComponent<Image>();
             }
             lbList = UIKit.Rect("List", leaderboard.transform);
@@ -571,7 +572,7 @@ namespace Colorify
             for (int i = lbList.childCount - 1; i >= 0; i--) Destroy(lbList.GetChild(i).gameObject);
             if (r == null || !r.ok) { lbStatus.text = "Couldn't load the leaderboard.\nCheck your connection."; return; }
             lbStatus.text = r.top.Count == 0 ? (r.mode == "trophies" ? "No trophies yet. Win a public duel or race!" : "No scores yet. Be the first!") : "";
-            string unit = r.mode == "normal" ? "hits" : r.mode == "duel" ? "wins" : r.mode == "trophies" ? "trophies" : "";
+            string unit = r.mode == "points" ? "pts" : r.mode == "normal" ? "hits" : r.mode == "duel" ? "wins" : r.mode == "trophies" ? "trophies" : "";
             int rows = Mathf.Min(r.top.Count, 20);
             for (int i = 0; i < rows; i++)
             {
@@ -594,7 +595,7 @@ namespace Colorify
         }
 
         // Envía la puntuación al ranking global (Normal y Supervivencia). Sin conexión, simplemente no se envía.
-        private void SubmitOnline(string m, long score, string info, List<int> samples, List<int> misses)
+        private void SubmitOnline(string m, long score, string info, List<int> samples, List<int> misses, int playMs = 0, string end = null)
         {
             if (!cfg.submitScoresOnline || score <= 0) return;
             EnsureIdentity();
@@ -602,7 +603,7 @@ namespace Colorify
             StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, CurrentName, m, score, info, s, s != null ? misses : null, r =>
             {
                 if (r != null && !r.ok && r.error == "bad_name") sessionName = null;   // nombre reservado por otra cuenta
-            }));
+            }, playMs, end));
         }
 
         // =====================================================================

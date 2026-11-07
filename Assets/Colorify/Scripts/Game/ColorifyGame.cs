@@ -25,7 +25,7 @@ namespace Colorify
         private enum Mode { Normal, Survival, Online, Race }
 
         private State state = State.Menu;
-        private Mode mode = Mode.Survival;
+        private Mode mode = Mode.Normal;
         private NormalRun normal;   // partida del modo Normal (null si no se juega ese modo)
         private State stateBeforePause;
         private RunState run;
@@ -35,9 +35,12 @@ namespace Colorify
         private float runStartedAt, pausedAt, pausedTotal;
         private bool continueOffered;
         private Coroutine attract;
-        // Variante del tablero actual (modo Normal y duelo): rayas o memoria
-        private NormalRun.Variant boardVariant = NormalRun.Variant.Plain;
-        private float flashLeft, flashRevealLeft;
+        // Tipo del tablero actual: forma de las fichas y efecto de la muestra (Normal, carreras y, con rayas y
+        // memoria, el duelo)
+        private BoardKind boardKind = BoardKind.Plain;
+        private float flashLeft, flashRevealLeft, fxTime;
+        private int lastBoardSize;
+        private Coroutine bannerRoutine;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -64,6 +67,21 @@ namespace Colorify
 
             BuildOverlays();
             ShowMenu(instant: true);
+            StartCoroutine(LoadTuning());
+        }
+
+        // Lo que el servidor ha aprendido de las partidas (ritmo y dificultad de cada especial). Sin conexión,
+        // el juego usa valores de referencia.
+        private IEnumerator LoadTuning()
+        {
+            if (!cfg.submitScoresOnline) yield break;
+            yield return Online.OnlineApi.GetTuning(cfg, r =>
+            {
+                if (r == null || !r.ok) return;
+                var t = new Tuning { pace = r.pace > 0f ? r.pace : 1f };
+                if (r.codes != null) foreach (var c in r.codes) t.Set(c.c, c.ms, c.miss, c.n);
+                Tuning.Current = t;
+            });
         }
 
         // =====================================================================
@@ -80,14 +98,13 @@ namespace Colorify
             UIKit.Place(tag.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 300));
             v.menuBest = UIKit.Text("Best", v.menu.transform, "", 40, UIKit.Ink, black: true);
             UIKit.Place(v.menuBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 205));
-            // Modos: Normal (aciertos y tiempo), Supervivencia (rondas y cartas) y Online (próximamente)
-            var normalBtn = UIKit.Button("Normal", v.menu.transform, "NORMAL", ColorifyView.TitleColors[3], new Vector2(620, 150), () => StartRun(Mode.Normal), 72);
-            UIKit.Place((RectTransform)normalBtn.transform, 0.5f, 0.5f, new Vector2(620, 150), new Vector2(0, 70));
-            var survivalBtn = UIKit.Button("Survival", v.menu.transform, "SURVIVAL", ColorifyView.TitleColors[4], new Vector2(620, 150), () => StartRun(Mode.Survival), 72);
-            UIKit.Place((RectTransform)survivalBtn.transform, 0.5f, 0.5f, new Vector2(620, 150), new Vector2(0, -100));
-            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE", ColorifyView.TitleColors[2], new Vector2(620, 130), ShowOnline, 64);
-            UIKit.Place((RectTransform)onlineBtn.transform, 0.5f, 0.5f, new Vector2(620, 130), new Vector2(0, -260));
-            var best = UIKit.Button("BestRuns", v.menu.transform, "BEST RUNS", ColorifyView.TitleColors[1], new Vector2(400, 110), ShowHistory, 46);
+            // Modos: Normal (puntos y tiempo) y Online. El modo Supervivencia (rondas y cartas) ya no sale en el
+            // menú: su código sigue en el proyecto por si se recupera.
+            var normalBtn = UIKit.Button("Normal", v.menu.transform, "PLAY", ColorifyView.TitleColors[3], new Vector2(660, 180), () => StartRun(Mode.Normal), 84);
+            UIKit.Place((RectTransform)normalBtn.transform, 0.5f, 0.5f, new Vector2(660, 180), new Vector2(0, 40));
+            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE", ColorifyView.TitleColors[2], new Vector2(620, 140), ShowOnline, 66);
+            UIKit.Place((RectTransform)onlineBtn.transform, 0.5f, 0.5f, new Vector2(620, 140), new Vector2(0, -170));
+            var best = UIKit.Button("Ranking", v.menu.transform, "RANKING", ColorifyView.TitleColors[1], new Vector2(400, 110), () => ShowLeaderboard("points"), 46);
             UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, -430));
             var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
             UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(215, -430));
@@ -199,8 +216,7 @@ namespace Colorify
             foreach (var cg in new[] { v.pause, v.cards, v.nextRound, v.gameOver, v.victory, v.history }) Hide(cg, instant);
             LeaveOnline(instant);
             var bests = new List<string>();
-            if (save.bestNormalHits > 0) bests.Add($"NORMAL  {save.bestNormalHits}");
-            if (save.bestScore > 0) bests.Add($"SURVIVAL  {UIKit.Thousands(save.bestScore)}");
+            if (save.bestNormalPoints > 0) bests.Add($"{UIKit.Thousands(save.bestNormalPoints)} PTS");
             v.menuBest.text = bests.Count > 0 ? "BEST  ·  " + string.Join("   ·   ", bests) : "";
             v.multChip.gameObject.SetActive(true);
             v.roundLabel.text = "";
@@ -270,13 +286,15 @@ namespace Colorify
             foreach (var cg in new[] { v.menu, v.gameOver, v.history }) Hide(cg);
             mode = m;
             run = m == Mode.Survival ? new RunState(cfg) : null;
-            normal = m == Mode.Normal ? new NormalRun(cfg) : null;
+            normal = m == Mode.Normal ? new NormalRun(cfg, specials: true) : null;
             if (normal != null)
             {
                 roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : cfg.normalStartTime;
                 timeLeft = Mathf.Min(cfg.normalStartTime, normal.MaxTime);
             }
-            v.multChip.gameObject.SetActive(m == Mode.Survival);
+            v.multChip.gameObject.SetActive(m == Mode.Survival || m == Mode.Normal);
+            v.multText.text = "x1";
+            lastBoardSize = 0;
             pauseButton.gameObject.SetActive(true);
             ResetHitRecording();
             continueOffered = false;
@@ -304,6 +322,20 @@ namespace Colorify
 
         private void NormalHit(Tile tile)
         {
+            int code = boardKind.Code(current.size);
+            int pts = 0;
+            bool chainUp = false;
+            if (normal.specials)
+            {
+                float reactionMs = (Time.time - boardShownAt) * 1000f;
+                bool fast = Points.IsFast(cfg, Tuning.Current, current.size, boardKind, reactionMs);
+                int chainBefore = normal.chain;
+                normal.chain = fast ? Mathf.Min(Mathf.Max(1, cfg.chainMax), normal.chain + 1) : 1;
+                chainUp = normal.chain > chainBefore;
+                if (normal.chain > normal.bestChain) normal.bestChain = normal.chain;
+                pts = Points.ForHit(cfg, Tuning.Current, current.size, boardKind, reactionMs, normal.chain, normal.hits);
+                normal.points += pts;
+            }
             normal.hits++;
             normal.streak++;
             if (normal.streak > normal.bestStreak) normal.bestStreak = normal.streak;
@@ -314,7 +346,6 @@ namespace Colorify
             timeLeft = Mathf.Min(Mathf.Max(timeLeft + bonus, floor), normal.MaxTime);
             bonus = timeLeft - before;
             if (normal.MaxTime == float.MaxValue) roundTime = Mathf.Max(roundTime, timeLeft);
-            int code = current.size + 10 * (int)boardVariant;
             RecordHit(code);
             if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft, code);
 
@@ -323,19 +354,88 @@ namespace Colorify
             juice.Burst(tile.transform.position, col, 8, 800f);
             juice.FloatText(v.timerBack.transform.position, "+" + bonus.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s", UIKit.Ink, 56f, 80f);
             juice.Punch(v.scoreText.transform, 0.12f, 0.18f);
-            sfx.Play(Sfx.Id.Hit, 1f + 0.02f * Mathf.Min(normal.streak, 25));
+            sfx.Play(Sfx.Id.Hit, 1f + 0.02f * Mathf.Min(normal.streak, 25) + (normal.specials ? 0.06f * (normal.chain - 1) : 0f));
             Haptics.Pulse(10);
-            // Aviso cuando crece la cuadrícula o cambia la variante de la muestra
-            var nextVariant = normal.BoardVariant;
-            string notice = normal.GridSize != current.size ? $"{normal.GridSize}×{normal.GridSize}"
-                : nextVariant != boardVariant ? (nextVariant == NormalRun.Variant.Stripes ? "STRIPES!" : nextVariant == NormalRun.Variant.Flash ? "REMEMBER IT!" : "") : "";
-            if (notice != "")
+            if (normal.specials)
             {
-                v.stampSub.text = notice;
-                juice.PopIn(v.stampSub.transform, 0f, 0.3f, 0.5f);
-                StartCoroutine(ClearStampSub(1f));
+                // Puntos sobre la ficha y, si el acierto ha sido rápido, el multiplicador bien grande
+                float big = Mathf.Lerp(64f, 96f, Mathf.Clamp01(pts / 600f));
+                juice.FloatText(tile.transform.position + Vector3.up * 30f, "+" + UIKit.Thousands(pts), UIKit.Ink, big, 150f);
+                v.multText.text = "x" + normal.chain;
+                if (chainUp)
+                {
+                    Color c = ColorifyView.TitleColors[(normal.chain + 1) % ColorifyView.TitleColors.Length];
+                    juice.FloatText(tile.transform.position - Vector3.up * 40f, $"X{normal.chain}!", c, 120f + 14f * normal.chain, 220f);
+                    juice.Punch(v.multChip.transform, 0.35f, 0.3f);
+                    sfx.Play(Sfx.Id.HitWarm, 1f + 0.08f * normal.chain, 0.7f);
+                    if (normal.chain >= 3) juice.Shake(v.board, 6f + 3f * normal.chain, 0.15f);
+                    Haptics.Pulse(20);
+                }
+            }
+            else
+            {
+                // Duelo: aviso cuando crece la cuadrícula o cambia la variante de la muestra (reglas de siempre)
+                var nextVariant = normal.BoardVariant;
+                string notice = normal.GridSize != current.size ? $"{normal.GridSize}×{normal.GridSize}"
+                    : (int)nextVariant != (int)boardKind.fx ? (nextVariant == NormalRun.Variant.Stripes ? "STRIPES!" : nextVariant == NormalRun.Variant.Flash ? "REMEMBER IT!" : "") : "";
+                if (notice != "") ShowBanner(notice);
             }
             NewBoard();
+        }
+
+        // Aviso grande entre la muestra y el tablero: entra con rebote y se va hacia arriba desvaneciéndose
+        private void ShowBanner(string text, bool rainbow = true)
+        {
+            if (bannerRoutine != null) StopCoroutine(bannerRoutine);
+            bannerRoutine = StartCoroutine(BannerRoutine(text, rainbow));
+        }
+
+        private IEnumerator BannerRoutine(string text, bool rainbow)
+        {
+            var t = v.banner;
+            var rt = t.rectTransform;
+            t.text = rainbow ? ColorifyView.RainbowTitle(text) : text;
+            t.fontSize = text.Length > 16 ? 76 : text.Length > 11 ? 92 : 112;
+            Vector2 home = new Vector2(0, ColorifyView.Layout.BoardBottom + ColorifyView.Layout.BoardSize + 40);
+            sfx.Play(Sfx.Id.Card, 1.1f, 0.8f);
+            Haptics.Pulse(15);
+            const float pop = 0.32f, hold = 0.75f, leave = 0.3f;
+            for (float e = 0f; e < pop + hold + leave; e += Time.unscaledDeltaTime)
+            {
+                float scale, alpha = 1f, rise = 0f, tilt;
+                if (e < pop)
+                {
+                    float k = e / pop;
+                    // Rebote: pasa de 1,25 y vuelve a 1
+                    scale = k < 0.6f ? Mathf.Lerp(0.2f, 1.25f, k / 0.6f) : Mathf.Lerp(1.25f, 1f, (k - 0.6f) / 0.4f);
+                    tilt = Mathf.Lerp(-12f, -3f, k);
+                }
+                else if (e < pop + hold)
+                {
+                    float k = (e - pop) / hold;
+                    scale = 1f + 0.04f * Mathf.Sin(k * Mathf.PI * 3f);
+                    tilt = -3f + 2f * Mathf.Sin(k * Mathf.PI * 2f);
+                }
+                else
+                {
+                    float k = (e - pop - hold) / leave;
+                    scale = 1f + 0.25f * k;
+                    alpha = 1f - k;
+                    rise = 80f * k;
+                    tilt = -1f;
+                }
+                rt.localScale = Vector3.one * scale;
+                rt.localRotation = Quaternion.Euler(0f, 0f, tilt);
+                rt.anchoredPosition = home + Vector2.up * rise;
+                t.alpha = alpha;
+                yield return null;
+            }
+            t.text = "";
+            t.alpha = 1f;
+            rt.localScale = Vector3.one;
+            rt.localRotation = Quaternion.identity;
+            rt.anchoredPosition = home;
+            bannerRoutine = null;
         }
 
         private IEnumerator ClearStampSub(float delay)
@@ -347,7 +447,7 @@ namespace Colorify
         private IEnumerator NormalOver()
         {
             state = State.Resolving;
-            if (boardVariant == NormalRun.Variant.Flash) { v.swatchRing.gameObject.SetActive(false); SetSwatchHidden(false); }   // al perder se ve el color
+            RevealSwatch();   // al perder se ve el color (memoria y encoger)
             sfx.Play(Sfx.Id.Lose);
             Haptics.Pulse(80);
             juice.Shake(v.board, 26f, 0.4f);
@@ -447,28 +547,97 @@ namespace Colorify
 
         private void NewBoard()
         {
-            bool variants = normal != null;
-            current = normal != null
-                ? ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight,
-                    mode == Mode.Online ? DuelBoardRng() : rng)
-                : ColorBoardGenerator.Generate(run, rng);
-            ShowBoard(current);
-            if (variants) ApplyVariant(normal.BoardVariant);
+            if (normal != null && normal.specials)
+            {
+                var previous = normal.kind;
+                normal.kind = Progression.Pick(cfg, Tuning.Current, normal.hits, previous, rng);
+                current = ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight, rng);
+                ShowBoard(current);
+                ApplyKind(normal.kind);
+                // Aviso grande al entrar en un especial nuevo o al crecer la cuadrícula
+                if (!normal.kind.IsPlain && !normal.kind.Same(previous)) ShowBanner(normal.kind.Banner);
+                else if (lastBoardSize > 0 && current.size != lastBoardSize) ShowBanner($"{current.size}×{current.size}");
+                lastBoardSize = current.size;
+            }
+            else if (normal != null)
+            {
+                current = ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight,
+                    mode == Mode.Online ? DuelBoardRng() : rng);
+                ShowBoard(current);
+                var variant = normal.BoardVariant;
+                ApplyKind(new BoardKind(Shape.Square, variant == NormalRun.Variant.Stripes ? Effect.Stripes : variant == NormalRun.Variant.Flash ? Effect.Flash : Effect.None));
+            }
+            else
+            {
+                current = ColorBoardGenerator.Generate(run, rng);
+                ShowBoard(current);
+            }
             boardShownAt = Time.time;
         }
 
-        // Rayas: franjas blancas sobre la muestra. Memoria: el color se ve unos segundos (con un anillo que se
-        // vacía) y luego se oculta; al fallar se vuelve a ver un momento.
-        private void ApplyVariant(NormalRun.Variant variant)
+        // Forma de las fichas y de la muestra, y efecto de la muestra:
+        //  · Rayas blancas u oscuras por encima de la muestra.
+        //  · Memoria: el color se ve unos segundos (con un anillo que se vacía) y luego se oculta.
+        //  · Encoger: la muestra se hace pequeña hasta desaparecer.
+        //  · Tambaleo y giro: la muestra se balancea o gira.
+        // En memoria y encoger, al fallar se vuelve a ver el color un momento.
+        private void ApplyKind(BoardKind kind)
         {
-            boardVariant = variant;
-            v.swatchStripes.gameObject.SetActive(variant == NormalRun.Variant.Stripes);
-            if (variant == NormalRun.Variant.Stripes) v.swatchStripes.sprite = ColorifyView.StripesSprite(cfg.normalStripeCoverage);
-            flashLeft = variant == NormalRun.Variant.Flash ? cfg.normalFlashSeconds : 0f;
+            boardKind = kind;
+            fxTime = 0f;
+            int count = current != null ? current.size * current.size : 0;
+            float tileRadius = v.tiles.Count > 0 ? v.tiles[0].image.pixelsPerUnitMultiplier : 0.5f;
+            for (int i = 0; i < count && i < v.tiles.Count; i++) ColorifyView.SetShape(v.tiles[i].image, kind.shape, tileRadius);
+            ColorifyView.SetShape(v.swatch, kind.shape, 0.35f);
+            ColorifyView.SetShape(v.swatchShadow, kind.shape, 0.35f);
+
+            bool stripes = kind.fx == Effect.Stripes || kind.fx == Effect.DarkStripes;
+            v.swatchStripes.gameObject.SetActive(stripes);
+            if (stripes)
+            {
+                v.swatchStripes.sprite = ColorifyView.StripesSprite(cfg.normalStripeCoverage, kind.shape);
+                v.swatchStripes.color = kind.fx == Effect.DarkStripes ? new Color(0.09f, 0.08f, 0.08f, 1f) : Color.white;
+                v.swatchStripes.preserveAspect = true;
+            }
+            flashLeft = kind.fx == Effect.Flash ? cfg.normalFlashSeconds : kind.fx == Effect.Shrink ? cfg.normalShrinkSeconds : 0f;
             flashRevealLeft = 0f;
-            v.swatchRing.gameObject.SetActive(variant == NormalRun.Variant.Flash);
+            v.swatchRing.gameObject.SetActive(kind.fx == Effect.Flash);
             v.swatchRing.fillAmount = 1f;
+            SetSwatchTransform(0f, 1f, Vector2.zero);
             SetSwatchHidden(false);
+        }
+
+        private void SetSwatchTransform(float degrees, float scale, Vector2 offset)
+        {
+            var rot = Quaternion.Euler(0f, 0f, degrees);
+            var s = new Vector3(scale, scale, 1f);
+            v.swatch.rectTransform.localRotation = rot;
+            v.swatch.rectTransform.localScale = s;
+            v.swatch.rectTransform.anchoredPosition = v.swatchBase + offset;
+            v.swatchShadow.rectTransform.localRotation = rot;
+            v.swatchShadow.rectTransform.localScale = s;
+            v.swatchShadow.rectTransform.anchoredPosition = v.shadowBase + offset;
+        }
+
+        // La muestra vuelve a verse entera (al perder o al acabar la ronda)
+        private void RevealSwatch()
+        {
+            if (boardKind.fx != Effect.Flash && boardKind.fx != Effect.Shrink) return;
+            flashLeft = 0f;
+            flashRevealLeft = 0f;
+            v.swatchRing.gameObject.SetActive(false);
+            SetSwatchTransform(0f, 1f, Vector2.zero);
+            SetSwatchHidden(false);
+        }
+
+        // Tras un fallo en memoria o encoger, si la muestra ya no se ve, se enseña un momento
+        private void PeekSwatchAfterMiss()
+        {
+            if ((boardKind.fx != Effect.Flash && boardKind.fx != Effect.Shrink) || flashLeft > 0f) return;
+            flashRevealLeft = cfg.normalFlashOnMiss;
+            SetSwatchTransform(0f, 1f, Vector2.zero);
+            SetSwatchHidden(false);
+            juice.Punch(v.swatch.transform, 0.12f, 0.2f);
         }
 
         private void SetSwatchHidden(bool hidden)
@@ -478,29 +647,61 @@ namespace Colorify
             v.swatchHidden.gameObject.SetActive(hidden);
         }
 
-        private void UpdateFlash(float dt)
+        private void UpdateBoardFx(float dt)
         {
-            if (boardVariant != NormalRun.Variant.Flash) return;
-            if (flashLeft > 0f)
+            fxTime += dt;
+            switch (boardKind.fx)
             {
-                flashLeft -= dt;
-                v.swatchRing.fillAmount = Mathf.Clamp01(flashLeft / Mathf.Max(0.01f, cfg.normalFlashSeconds));
-                if (flashLeft <= 0f) { v.swatchRing.gameObject.SetActive(false); SetSwatchHidden(true); }
-            }
-            else if (flashRevealLeft > 0f)
-            {
-                flashRevealLeft -= dt;
-                if (flashRevealLeft <= 0f) SetSwatchHidden(true);
+                case Effect.Flash:
+                case Effect.Shrink:
+                {
+                    bool shrink = boardKind.fx == Effect.Shrink;
+                    if (flashLeft > 0f)
+                    {
+                        flashLeft -= dt;
+                        float k = Mathf.Clamp01(flashLeft / Mathf.Max(0.01f, shrink ? cfg.normalShrinkSeconds : cfg.normalFlashSeconds));
+                        if (shrink) SetSwatchTransform(0f, Mathf.Max(0.001f, k * (0.85f + 0.15f * k)), Vector2.zero);   // se acelera al final
+                        else v.swatchRing.fillAmount = k;
+                        if (flashLeft <= 0f)
+                        {
+                            v.swatchRing.gameObject.SetActive(false);
+                            SetSwatchTransform(0f, 1f, Vector2.zero);
+                            SetSwatchHidden(true);
+                            if (shrink) juice.PopIn(v.swatch.transform, 0f, 0.18f, 0.7f);
+                        }
+                    }
+                    else if (flashRevealLeft > 0f)
+                    {
+                        flashRevealLeft -= dt;
+                        if (flashRevealLeft <= 0f) SetSwatchHidden(true);
+                    }
+                    break;
+                }
+                case Effect.Wobble:
+                {
+                    float deg = cfg.normalWobbleDegrees * Mathf.Sin(fxTime * 7.5f) * (0.8f + 0.2f * Mathf.Sin(fxTime * 2.1f));
+                    var off = new Vector2(16f * Mathf.Sin(fxTime * 4.3f), 6f * Mathf.Sin(fxTime * 9.1f));
+                    SetSwatchTransform(deg, 1f + 0.03f * Mathf.Sin(fxTime * 11f), off);
+                    break;
+                }
+                case Effect.Spin:
+                    SetSwatchTransform(-cfg.normalSpinSpeed * fxTime, 1f, Vector2.zero);
+                    break;
             }
         }
 
         private void ShowBoard(ColorBoard b)
         {
-            boardVariant = NormalRun.Variant.Plain;
+            boardKind = BoardKind.Plain;
+            flashLeft = flashRevealLeft = 0f;
             v.swatchStripes.gameObject.SetActive(false);
             v.swatchRing.gameObject.SetActive(false);
             v.swatchHidden.gameObject.SetActive(false);
+            SetSwatchTransform(0f, 1f, Vector2.zero);
+            ColorifyView.SetShape(v.swatch, Shape.Square, 0.35f);
+            ColorifyView.SetShape(v.swatchShadow, Shape.Square, 0.35f);
             v.LayoutTiles(b.size);
+            for (int i = 0; i < b.size * b.size && i < v.tiles.Count; i++) ColorifyView.SetShape(v.tiles[i].image, Shape.Square, v.tiles[i].image.pixelsPerUnitMultiplier);
             for (int i = 0; i < b.tiles.Count; i++)
             {
                 v.tiles[i].image.color = b.tiles[i].ToColor();
@@ -546,17 +747,21 @@ namespace Colorify
         private void Miss(Tile tile)
         {
             float penalty;
-            if (normal != null) { normal.misses++; normal.streak = 0; penalty = normal.MissPenalty; }
+            if (normal != null)
+            {
+                normal.misses++; normal.streak = 0; penalty = normal.MissPenalty;
+                if (normal.specials && normal.chain > 1) { normal.chain = 1; v.multText.text = "x1"; juice.Shake((RectTransform)v.multChip.transform, 12f, 0.25f); }
+            }
             else { run.wrongTaps++; penalty = roundTime * cfg.wrongTapPenaltyFraction; }
             wrongThisRound++;
             timeLeft -= penalty;
             if (normal != null)
             {
-                int code = current.size + 10 * (int)boardVariant;
+                int code = boardKind.Code(current.size);
                 RecordMiss(code);
                 if (mode == Mode.Online) duel?.Miss(normal.hits, timeLeft, code);
-                // Memoria: al fallar, la muestra se vuelve a ver un momento
-                if (boardVariant == NormalRun.Variant.Flash && flashLeft <= 0f) { flashRevealLeft = cfg.normalFlashOnMiss; SetSwatchHidden(false); juice.Punch(v.swatch.transform, 0.12f, 0.2f); }
+                // Memoria y encoger: al fallar, la muestra se vuelve a ver un momento
+                PeekSwatchAfterMiss();
             }
             juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
             juice.Shake(v.board, 8f, 0.2f);
@@ -580,7 +785,7 @@ namespace Colorify
             else if (state == State.Playing)
             {
                 timeLeft -= Mathf.Min(Time.deltaTime, 0.1f);
-                if (normal != null) UpdateFlash(Mathf.Min(Time.deltaTime, 0.1f));
+                if (normal != null) UpdateBoardFx(Mathf.Min(Time.deltaTime, 0.1f));
 #if UNITY_EDITOR
                 if (run != null && KeyPressed("n")) { run.roundScore = run.Target; StartCoroutine(RoundCleared()); return; }   // trampa: superar ronda
                 if (KeyPressed("k")) timeLeft = 0f;                                                                 // trampa: perder
@@ -608,8 +813,16 @@ namespace Colorify
             if (normal != null)
             {
                 v.roundLabel.text = mode == Mode.Online ? "ONLINE DUEL" : "NORMAL";
-                v.scoreText.text = $"{normal.hits} <size=60%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>HITS</color></size>";
-                v.totalText.text = mode == Mode.Online ? DuelHudLine() : save.bestNormalHits > 0 ? "BEST " + save.bestNormalHits : "";
+                if (normal.specials)
+                {
+                    v.scoreText.text = $"{UIKit.Thousands(normal.points)} <size=60%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>PTS</color></size>";
+                    v.totalText.text = save.bestNormalPoints > 0 ? "BEST " + UIKit.Thousands(save.bestNormalPoints) : "";
+                }
+                else
+                {
+                    v.scoreText.text = $"{normal.hits} <size=60%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>HITS</color></size>";
+                    v.totalText.text = mode == Mode.Online ? DuelHudLine() : save.bestNormalHits > 0 ? "BEST " + save.bestNormalHits : "";
+                }
                 SetTimer(roundTime > 0 ? Mathf.Clamp01(timeLeft / roundTime) : 1f);
                 return;
             }
@@ -829,12 +1042,12 @@ namespace Colorify
 
         private void ShowNormalGameOver()
         {
-            bool isRecord = normal.hits > save.bestNormalHits;
-            v.overScore.text = normal.hits + " <size=40%>HITS</size>";
-            v.overBest.text = isRecord ? "NEW BEST!" : "BEST " + save.bestNormalHits;
-            v.overInfo.text = $"Best streak {normal.bestStreak}  ·  {normal.misses} misses";
+            bool isRecord = normal.points > save.bestNormalPoints;
+            v.overScore.text = UIKit.Thousands(normal.points) + " <size=40%>PTS</size>";
+            v.overBest.text = isRecord ? "NEW BEST!" : "BEST " + UIKit.Thousands(save.bestNormalPoints);
+            v.overInfo.text = $"{normal.hits} hits  ·  best combo x{normal.bestChain}  ·  {normal.misses} misses";
             ColorifyView.MiniCards(v.overCardsRow, null, cfg);
-            bool nearRecord = save.bestNormalHits > 0 && normal.hits >= save.bestNormalHits * cfg.continueNearRecordFraction;
+            bool nearRecord = save.bestNormalPoints > 0 && normal.points >= save.bestNormalPoints * cfg.continueNearRecordFraction;
             bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
             bool offer = !normal.continueUsed && ads.IsReady && (nearRecord || everyFew);
             v.overContinue.gameObject.SetActive(offer);
@@ -901,13 +1114,15 @@ namespace Colorify
             }
             if (normal != null)
             {
-                SubmitOnline("normal", normal.hits, $"{normal.GridSize}x{normal.GridSize}", hitSamples, missSamples);
+                SubmitOnline("points", normal.points, $"{normal.hits} hits", hitSamples, missSamples,
+                    Mathf.RoundToInt(normalPlayMs), result == "quit" ? "quit" : "time");
                 save.normalRunsPlayed++;
                 if (normal.hits > save.bestNormalHits) save.bestNormalHits = normal.hits;
+                if (normal.points > save.bestNormalPoints) save.bestNormalPoints = normal.points;
                 save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
                 save.Save();
                 Analytics.Log("game_end", ("mode", "normal"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
-                    ("hits", normal.hits), ("misses", normal.misses), ("best_streak", normal.bestStreak), ("grid", normal.GridSize),
+                    ("hits", normal.hits), ("points", normal.points), ("best_combo", normal.bestChain), ("misses", normal.misses), ("best_streak", normal.bestStreak), ("grid", normal.GridSize),
                     ("continue_used", normal.continueUsed));
                 normal = null;
                 return;

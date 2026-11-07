@@ -21,7 +21,8 @@ namespace Colorify
     public class SaveData
     {
         public long bestScore;          // Supervivencia
-        public int bestNormalHits;      // Normal
+        public int bestNormalHits;      // Normal (aciertos; lo usa el duelo para emparejar)
+        public long bestNormalPoints;   // Normal (puntos, desde las formas y efectos especiales)
         public int normalRunsPlayed;
         public int runsPlayed;
         public int runsSinceContinueOffer;

@@ -35,8 +35,16 @@ namespace Colorify.Online
         public List<NetPlayer> players = new List<NetPlayer>();
         public int round, total, size, limit, slot, place, pts;   // rstart / rhit / rend
         public float diff;                  // rstart: dificultad de color 0→1
+        public int shape, fx;               // rstart: forma de las fichas y efecto de la muestra (Specials.cs)
         public int trophies, delta;         // welcome / trophies: total y cambio
     }
+
+    // GET /api/colorify/tuning: lo aprendido de todas las partidas
+    [Serializable]
+    public class TuningCode { public int c; public float ms, miss, n; }
+
+    [Serializable]
+    public class TuningResponse { public bool ok; public float pace = 1f; public List<TuningCode> codes = new List<TuningCode>(); }
 
     [Serializable]
     public class ScoreRow { public int rank; public string name; public long score; public string info; public bool me; }
@@ -92,13 +100,29 @@ namespace Colorify.Online
             }
         }
 
+        public static IEnumerator GetTuning(ColorifyConfig cfg, Action<TuningResponse> done)
+        {
+            using (var req = UnityWebRequest.Get(BaseUrl(cfg) + "/api/colorify/tuning"))
+            {
+                req.timeout = 8;
+                yield return req.SendWebRequest();
+                TuningResponse r = null;
+                if (req.result == UnityWebRequest.Result.Success)
+                    try { r = JsonUtility.FromJson<TuningResponse>(req.downloadHandler.text); } catch (Exception) { }
+                done?.Invoke(r);
+            }
+        }
+
         // samples: [tamaño, ms, tamaño, ms, …] de cada acierto y misses: [tamaño, fallos, …], para que el bot aprenda
         public static IEnumerator SubmitScore(ColorifyConfig cfg, string player, string name, string mode, long score, string info,
-            List<int> samples, List<int> misses, Action<SubmitResponse> done)
+            List<int> samples, List<int> misses, Action<SubmitResponse> done, int playMs = 0, string end = null)
         {
             var sb = new StringBuilder("{");
             sb.Append("\"player\":\"").Append(player).Append("\",\"name\":\"").Append(Escape(name)).Append("\",\"mode\":\"").Append(mode)
               .Append("\",\"score\":").Append(score).Append(",\"info\":\"").Append(Escape(info)).Append('"');
+            // Duración jugada y cómo acabó (time / quit): el servidor ajusta el ritmo para partidas de ~5 minutos
+            if (playMs > 0) sb.Append(",\"ms\":").Append(playMs);
+            if (!string.IsNullOrEmpty(end)) sb.Append(",\"end\":\"").Append(end).Append('"');
             if (samples != null && samples.Count >= 2) AppendArray(sb, "samples", samples);
             if (misses != null && misses.Count >= 2) AppendArray(sb, "misses", misses);
             sb.Append('}');

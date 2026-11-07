@@ -160,6 +160,34 @@ namespace Colorify
         [Tooltip("Rayas: parte de la muestra tapada por franjas blancas (0-1)")]
         [Range(0.1f, 0.8f)] public float normalStripeCoverage = 0.45f;
 
+        [Header("Modo Normal y carreras: formas y efectos especiales")]
+        [Tooltip("Calentamiento: aciertos en 2×2 con colores normales antes de que cambie nada")]
+        public int normalWarmupHits = 8;
+        [Tooltip("Cuadrícula máxima en Normal y carreras (el duelo sigue con la suya)")]
+        public int normalSpecialMaxGrid = 5;
+        [Tooltip("Aciertos tras el calentamiento hasta que solo salen tableros especiales")]
+        public int normalSpecialRampHits = 40;
+        [Tooltip("Cada cuántos aciertos se desbloquea un especial nuevo (en orden de dificultad aprendida)")]
+        public int normalUnlockEveryHits = 4;
+        [Tooltip("Aciertos, después de la rampa, hasta llegar a la probabilidad máxima de combinar forma y efecto")]
+        public int normalComboRampHits = 40;
+        [Range(0, 1)] public float normalComboMax = 0.6f;
+        [Tooltip("Encoger: segundos hasta que la muestra desaparece")]
+        public float normalShrinkSeconds = 2.6f;
+        [Tooltip("Tambaleo: grados de balanceo de la muestra")]
+        public float normalWobbleDegrees = 10f;
+        [Tooltip("Giro: grados por segundo")]
+        public float normalSpinSpeed = 70f;
+
+        [Header("Modo Normal: puntos")]
+        public float pointsBase = 37f;
+        public float pointsPerGridStep = 14f;
+        [Tooltip("Los puntos de cada acierto suben un poco con los aciertos de la partida")]
+        public float pointsProgressPerHit = 0.006f;
+        [Tooltip("Un acierto es rápido (sube el multiplicador X2, X3…) si tarda menos que esta parte del tiempo esperado")]
+        [Range(0.2f, 1.5f)] public float fastHitFraction = 0.8f;
+        public int chainMax = 5;
+
         [Header("Online")]
         [Tooltip("Servidor de Kovu's Pride (el portfolio). En la web se usa el dominio desde el que se juega.")]
         public string onlineBaseUrl = "https://alejandrobaenaportfolio.com";

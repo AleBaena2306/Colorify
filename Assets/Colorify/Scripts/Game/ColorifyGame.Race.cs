@@ -432,6 +432,10 @@ namespace Colorify
             current = ColorBoardGenerator.GenerateWith(cfg, Mathf.Clamp(m.size, 2, 8), minSep, cfg.normalSameFamily,
                 f => cfg.families[f].spawnWeight, new System.Random(m.seed));
             ShowBoard(current);
+            // Forma y efecto de la ronda (los elige el servidor, igual para todos)
+            var kind = new BoardKind((Shape)Mathf.Clamp(m.shape, 0, 3), (Effect)Mathf.Clamp(m.fx, 0, 6));
+            ApplyKind(kind);
+            if (!kind.IsPlain) ShowBanner(kind.Banner);
             sfx.Play(Sfx.Id.Go);
             raceShownAt = Time.realtimeSinceStartup;
             state = State.Playing;
@@ -454,6 +458,7 @@ namespace Colorify
             else
             {
                 raceLockedUntil = now + RaceLockSeconds;
+                PeekSwatchAfterMiss();
                 juice.Shake((RectTransform)tile.transform, 22f, 0.25f);
                 juice.Shake(v.board, 8f, 0.2f);
                 juice.FloatText(tile.transform.position, "FROZEN", UIKit.Danger, 56f, 90f);
@@ -464,6 +469,7 @@ namespace Colorify
 
         private void UpdateRace()
         {
+            if (state == State.Playing) UpdateBoardFx(Mathf.Min(Time.unscaledDeltaTime, 0.1f));
             if (state == State.Playing)
             {
                 float left = raceLimit - (Time.realtimeSinceStartup - raceShownAt);
@@ -508,6 +514,7 @@ namespace Colorify
                     v.stampText.text = "TOO SLOW";
                     v.stampSub.text = "";
                     juice.PopIn(v.stampText.transform, 0f, 0.3f, 1.4f);
+                    RevealSwatch();
                     if (current != null && !raceRevealed) { raceRevealed = true; StartCoroutine(RevealCorrectTile(1.6f)); }
                 }
             }

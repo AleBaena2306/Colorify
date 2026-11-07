@@ -42,13 +42,29 @@ Los valores son un punto de partida razonable, **no están equilibrados**: el d�
 - Prueba en el navegador: **COLORIFY > Build > Web: prueba rápida (solo PC, sin publicar)**.
 - **COLORIFY > Build > Web (móvil + PC)** compila y publica en el portfolio (la ficha sigue en WIP).
 
-## Modo Normal: suelo de tiempo y variantes
+## Modo Normal: calentamiento, formas, efectos y puntos
 
+El menú tiene PLAY (modo Normal), ONLINE y RANKING. El modo Supervivencia (rondas y cartas) ya no sale en el menú
+ni en el ranking, pero su código sigue en el proyecto (`RunState`, cartas) por si se recupera.
+
+- **Calentamiento**: los primeros `normalWarmupHits` aciertos (8) son en 2×2 con colores normales.
+- **Cuadrícula**: luego 3×3, 4×4 y 5×5 como máximo (`normalSpecialMaxGrid`), un tamaño cada `normalHitsPerGridStep`
+  aciertos. El crecimiento ya no es solo vertical (más casillas), sino horizontal: tableros especiales.
+- **Especiales** (`Specials.cs`): formas de fichas y muestra (círculo, triángulo, rombo) y efectos de la muestra
+  (rayas blancas, rayas oscuras, memoria, tambaleo, encoger hasta desaparecer y giro). Tras el calentamiento salen
+  cada vez más a menudo hasta que, a los `normalSpecialRampHits` aciertos (40), ya no hay tableros normales; cada
+  `normalUnlockEveryHits` aciertos (4) se desbloquea uno nuevo, en el orden que a los jugadores les resulta más fácil
+  (lo aprende el servidor); más adelante se combinan forma y efecto (`normalComboMax`).
+- **Puntos**: cada acierto da puntos según el tamaño, la dificultad aprendida del tablero y la rapidez frente al
+  tiempo medio de los jugadores en ese tablero. Los aciertos rápidos encadenados suben el multiplicador (X2!, X3!…
+  hasta `chainMax`); un acierto lento o un fallo lo devuelve a x1. El chip de la esquina muestra el multiplicador.
+- **Ritmo**: el servidor (`GET /api/colorify/tuning`) ajusta cuánto tiempo da cada acierto para que una partida
+  dure unos 5 minutos, con las partidas acabadas por tiempo (no las abandonadas). Sin conexión, valores de referencia.
 - Un acierto siempre te deja como mínimo en el 25 % del tiempo máximo (`normalHitFloorFraction`).
-- En cada tamaño de cuadrícula: N aciertos normales (`normalHitsPerGridStep`), luego k con la muestra **rayada**
-  (franjas blancas) y k de **memoria** (el color se ve 2 s con un anillo que se vacía; al fallar vuelve a verse
-  un momento). k empieza en 1 en el 2×2 y sube 1 por tamaño; en el 8×8 el ciclo se repite. Ajustes en
-  ColorifyConfig (sección «variantes de la muestra»). Lo mismo en los duelos; el bot del servidor usa la misma cuenta.
+- **Avisos**: al entrar en un especial nuevo o crecer la cuadrícula sale un aviso grande con rebote entre la muestra
+  y el tablero.
+- **Carreras**: la primera ronda es de calentamiento (2×2), luego hasta 5×5 con especiales; los elige el servidor
+  (`kinds.js`) igual para todos. **Duelo 1v1**: sigue con sus reglas (aciertos, rayas y memoria por tamaño, hasta 8×8).
 
 ## Online (duelos y ranking global)
 
@@ -70,7 +86,7 @@ El servidor está en el repositorio del portfolio (`worker/`), en el mismo Cloud
   con más trofeos se gana más y se pierde menos) y en carreras de salas públicas (de +25 el 1.º a −15 el último).
   Salas privadas y fantasmas no cuentan. Nunca bajan de 0. Ligas: Grey 0, Teal 200, Sage 500, Amber 900,
   Coral 1400, Sky 2000 y Rainbow 3000. El emparejamiento junta trofeos parecidos (la tolerancia crece con la espera).
-- **Ranking global**: Normal (aciertos), Supervivencia (puntos) y trofeos.
+- **Ranking global**: Normal (puntos) y trofeos.
 - **Nombre y cuenta** (CHANGE NAME): nombre libre de 3-16 caracteres con filtro de palabras (PlayerNames.cs y
   names.js). En el ordenador se escribe en la casilla (Enter guarda); en el navegador del móvil se abre el cuadro
   de texto del navegador; en Android, el teclado del sistema. Sin cuenta, el nombre escrito dura hasta cerrar el
