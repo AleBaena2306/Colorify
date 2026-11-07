@@ -165,8 +165,12 @@ namespace Colorify
         public int normalWarmupHits = 8;
         [Tooltip("Cuadrícula máxima en Normal y carreras (el duelo sigue con la suya)")]
         public int normalSpecialMaxGrid = 5;
-        [Tooltip("Aciertos tras el calentamiento hasta que solo salen tableros especiales")]
+        [Tooltip("Proporción de tableros especiales justo después del calentamiento…")]
+        [Range(0, 1)] public float normalSpecialStartShare = 0.5f;
+        [Tooltip("…y aciertos tras el calentamiento hasta que solo salen tableros especiales")]
         public int normalSpecialRampHits = 40;
+        [Tooltip("En un tablero especial con un solo cambio, probabilidad de que sea de forma (y no de efecto)")]
+        [Range(0, 1)] public float normalShapeShare = 0.65f;
         [Tooltip("Cada cuántos aciertos se desbloquea un especial nuevo (en orden de dificultad aprendida)")]
         public int normalUnlockEveryHits = 4;
         [Tooltip("Aciertos, después de la rampa, hasta llegar a la probabilidad máxima de combinar forma y efecto")]
