@@ -116,8 +116,10 @@ namespace Colorify
             UIKit.Place(finalList, 0.5f, 1f, new Vector2(1000, 800), new Vector2(0, -740));
             var toRoom = UIKit.Button("Room", raceFinal.transform, "BACK TO ROOM", ColorifyView.TitleColors[2], new Vector2(600, 150), BackToRoom, 56);
             UIKit.Place((RectTransform)toRoom.transform, 0.5f, 0f, new Vector2(600, 150), new Vector2(0, 300));
-            var fmenu = UIKit.Button("Menu", raceFinal.transform, "LEAVE", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
-            UIKit.Place((RectTransform)fmenu.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
+            var fonline = UIKit.Button("Online", raceFinal.transform, "ONLINE MENU", ColorifyView.TitleColors[0], new Vector2(420, 120), BackToOnline, 44);
+            UIKit.Place((RectTransform)fonline.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(-220, 110));
+            var fmenu = UIKit.Button("Menu", raceFinal.transform, "MAIN MENU", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 44);
+            UIKit.Place((RectTransform)fmenu.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(220, 110));
 
             // --- Clasificación en partida (a la derecha de la muestra) ---
             var box = UIKit.Box("RaceStandings", v.game, UIKit.WithAlpha(UIKit.PaperDark, 0.85f), 0.5f);

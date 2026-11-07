@@ -123,8 +123,11 @@ namespace Colorify
             UIKit.Place(resInfo.rectTransform, 0.5f, 0.5f, new Vector2(960, 160), new Vector2(0, 140));
             resAgain = UIKit.Button("Again", onlineResult.transform, "PLAY AGAIN", ColorifyView.TitleColors[2], new Vector2(600, 160), PlayAgainDuel, 68);
             UIKit.Place((RectTransform)resAgain.transform, 0.5f, 0.5f, new Vector2(600, 160), new Vector2(0, -80));
-            var resMenu = UIKit.Button("Menu", onlineResult.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
-            UIKit.Place((RectTransform)resMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -260));
+            // Tras un duelo: otra partida, volver al menú Online (lo más habitual) o al menú principal
+            var resOnline = UIKit.Button("Online", onlineResult.transform, "ONLINE MENU", ColorifyView.TitleColors[0], new Vector2(420, 120), BackToOnline, 44);
+            UIKit.Place((RectTransform)resOnline.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(-220, -260));
+            var resMenu = UIKit.Button("Menu", onlineResult.transform, "MAIN MENU", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 44);
+            UIKit.Place((RectTransform)resMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(220, -260));
 
             // --- Ranking global ---
             leaderboard = v.Overlay("Leaderboard", 0.95f);
@@ -205,6 +208,14 @@ namespace Colorify
             if (string.IsNullOrEmpty(save.playerId) || save.playerId.Length != 32) { save.playerId = PlayerNames.NewPlayerId(); changed = true; }
             if (!PlayerNames.IsValid(save.playerName)) { save.playerName = PlayerNames.Random(rng); changed = true; }
             if (changed) save.Save();
+        }
+
+        // Vuelve al menú Online desde el final de un duelo o de una carrera
+        private void BackToOnline()
+        {
+            if (mode == Mode.Race) LeaveRace();
+            ShowMenu();
+            ShowOnline();
         }
 
         private void ShowOnline()

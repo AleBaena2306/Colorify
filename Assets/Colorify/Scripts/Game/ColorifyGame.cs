@@ -66,6 +66,7 @@ namespace Colorify
             foreach (var t in v.tiles) t.onPress = OnTilePressed;
 
             BuildOverlays();
+            RegisterBackActions();
             ShowMenu(instant: true);
             StartCoroutine(LoadTuning());
         }
@@ -198,6 +199,40 @@ namespace Colorify
         }
 
         private void Show(CanvasGroup cg) { cg.transform.SetAsLastSibling(); juice.Fade(cg, 1f, 0.18f); }
+
+        // Tecla Esc en el ordenador y botón Atrás en Android: hace lo mismo que el botón BACK de la pantalla que
+        // está delante (fuera de partida; en partida, Esc sigue siendo pausa)
+        private class BackEntry { public CanvasGroup cg; public System.Action back; }
+        private readonly List<BackEntry> backActions = new List<BackEntry>();
+
+        private void RegisterBackActions()
+        {
+            System.Action<CanvasGroup, System.Action> Add = (cg, a) => { if (cg != null) backActions.Add(new BackEntry { cg = cg, back = a }); };
+            Add(v.history, HideHistory);
+            Add(v.gameOver, () => { FinishRun("lose"); ShowMenu(); });
+            Add(onlineMenu, () => { sfx.Play(Sfx.Id.Click); ShowMenu(); });
+            Add(duelMenu, () => { sfx.Play(Sfx.Id.Click); Hide(duelMenu); Show(onlineMenu); });
+            Add(searching, CancelSearch);
+            Add(onlineResult, BackToOnline);
+            Add(leaderboard, () => { sfx.Play(Sfx.Id.Click); Hide(leaderboard); });
+            Add(raceMenu, () => { sfx.Play(Sfx.Id.Click); LeaveRace(); Hide(raceMenu); Show(onlineMenu); });
+            Add(raceJoin, () => { sfx.Play(Sfx.Id.Click); Hide(raceJoin); });
+            Add(raceRoom, () => { sfx.Play(Sfx.Id.Click); LeaveRace(); Hide(raceRoom); Show(raceMenu); });
+            Add(raceFinal, BackToOnline);
+            Add(nameEditor, CloseNameEditor);
+            Add(signInWait, CancelSignIn);
+        }
+
+        private bool GoBack()
+        {
+            BackEntry top = null;
+            foreach (var e in backActions)
+                if (e.cg.gameObject.activeSelf && e.cg.blocksRaycasts && (top == null || e.cg.transform.GetSiblingIndex() > top.cg.transform.GetSiblingIndex()))
+                    top = e;
+            if (top == null) return false;
+            top.back();
+            return true;
+        }
         private void Hide(CanvasGroup cg, bool instant = false)
         {
             if (instant) { cg.alpha = 0f; cg.interactable = cg.blocksRaycasts = false; cg.gameObject.SetActive(false); }
@@ -778,7 +813,8 @@ namespace Colorify
             if (PausePressed())
             {
                 if (state == State.Paused) Resume();
-                else if (state == State.Playing || state == State.Countdown) Pause();
+                else if ((state == State.Playing || state == State.Countdown) && mode != Mode.Race) Pause();
+                else if (state != State.Playing && state != State.Countdown && state != State.Resolving) GoBack();
             }
 
             if (mode == Mode.Race) UpdateRace();
