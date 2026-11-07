@@ -638,6 +638,7 @@ namespace Colorify
             flashRevealLeft = 0f;
             v.swatchRing.gameObject.SetActive(kind.fx == Effect.Flash);
             v.swatchRing.fillAmount = 1f;
+            if (kind.fx == Effect.Flash) v.FitRing(kind.shape);
             SetSwatchTransform(0f, 1f, Vector2.zero);
             SetSwatchHidden(false);
         }
@@ -722,6 +723,17 @@ namespace Colorify
                 case Effect.Spin:
                     SetSwatchTransform(-cfg.normalSpinSpeed * fxTime, 1f, Vector2.zero);
                     break;
+                case Effect.MoveRight:
+                case Effect.MoveLeft:
+                {
+                    // Cruza la pantalla, sale por un lado y vuelve a entrar por el otro, sin parar. Empieza en el centro.
+                    float width = v.game.rect.width > 0f ? v.game.rect.width : ColorifyView.Layout.RefW;
+                    float span = width + ColorifyView.Layout.SwatchSize * 1.15f;
+                    float dir = boardKind.fx == Effect.MoveRight ? 1f : -1f;
+                    float x = Mathf.Repeat(fxTime * cfg.normalMoveSpeed + span * 0.5f, span) - span * 0.5f;
+                    SetSwatchTransform(0f, 1f, new Vector2(dir * x, 0f));
+                    break;
+                }
             }
         }
 

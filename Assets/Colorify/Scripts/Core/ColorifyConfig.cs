@@ -177,6 +177,8 @@ namespace Colorify
         public float normalWobbleDegrees = 10f;
         [Tooltip("Giro: grados por segundo")]
         public float normalSpinSpeed = 70f;
+        [Tooltip("Desplazamiento: unidades de pantalla por segundo (la pantalla mide 1080 de ancho)")]
+        public float normalMoveSpeed = 360f;
 
         [Header("Modo Normal: puntos")]
         public float pointsBase = 37f;

@@ -54,7 +54,8 @@ ni en el ranking, pero su código sigue en el proyecto (`RunState`, cartas) por 
   cuatro igual de probables. No cuentan como especial. El rombo y el triángulo se dibujan un 7 % más grandes que su
   casilla (`ColorifyView.ShapeScale`) para no verse pequeños al lado del cuadrado.
 - **Especiales**: efectos sobre la muestra (rayas blancas, rayas oscuras, memoria, tambaleo, encoger hasta
-  desaparecer y giro), sobre cualquier forma. Tras el calentamiento la mitad de los tableros llevan uno
+  desaparecer, giro y desplazamiento a la derecha o a la izquierda cruzando la pantalla), sobre cualquier forma
+  (el anillo de tiempo de memoria sigue la forma). Tras el calentamiento la mitad de los tableros llevan uno
   (`normalSpecialStartShare`) y, a los `normalSpecialRampHits` aciertos (40), todos. Cada `normalUnlockEveryHits`
   aciertos (4) se desbloquea uno nuevo, en el orden que a los jugadores les resulta más fácil (lo aprende el
   servidor), y el tablero siguiente lo enseña con su aviso.

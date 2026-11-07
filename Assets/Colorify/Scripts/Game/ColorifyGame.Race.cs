@@ -435,7 +435,7 @@ namespace Colorify
                 f => cfg.families[f].spawnWeight, new System.Random(m.seed));
             ShowBoard(current);
             // Forma y efecto de la ronda (los elige el servidor, igual para todos)
-            var kind = new BoardKind((Shape)Mathf.Clamp(m.shape, 0, 3), (Effect)Mathf.Clamp(m.fx, 0, 6));
+            var kind = new BoardKind((Shape)Mathf.Clamp(m.shape, 0, 3), (Effect)Mathf.Clamp(m.fx, 0, 8));
             ApplyKind(kind);
             if (kind.fx != Effect.None) ShowBanner(kind.Banner);
             sfx.Play(Sfx.Id.Go);

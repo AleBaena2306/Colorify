@@ -8,7 +8,7 @@ namespace Colorify
 
     // Efectos sobre la muestra. Los valores 1 y 2 coinciden con las variantes antiguas (rayas y memoria),
     // así el histórico que ya ha aprendido el bot sigue valiendo.
-    public enum Effect { None = 0, Stripes = 1, Flash = 2, DarkStripes = 3, Wobble = 4, Shrink = 5, Spin = 6 }
+    public enum Effect { None = 0, Stripes = 1, Flash = 2, DarkStripes = 3, Wobble = 4, Shrink = 5, Spin = 6, MoveRight = 7, MoveLeft = 8 }
 
     // Tipo de tablero: forma + efecto. Código para estadísticas y para el bot: tamaño + 10 × efecto + 100 × forma
     // (el servidor usa la misma cuenta en kinds.js).
@@ -27,7 +27,8 @@ namespace Colorify
         // Texto del aviso grande al entrar en un efecto especial (las formas no son especiales: no tienen aviso)
         public string Banner =>
             fx == Effect.Stripes ? "STRIPES!" : fx == Effect.DarkStripes ? "DARK STRIPES!" : fx == Effect.Flash ? "REMEMBER IT!"
-            : fx == Effect.Wobble ? "WOBBLE!" : fx == Effect.Shrink ? "SHRINKING!" : fx == Effect.Spin ? "SPIN!" : "";
+            : fx == Effect.Wobble ? "WOBBLE!" : fx == Effect.Shrink ? "SHRINKING!" : fx == Effect.Spin ? "SPIN!"
+            : fx == Effect.MoveRight ? "ON THE MOVE  →" : fx == Effect.MoveLeft ? "←  ON THE MOVE" : "";
     }
 
     // Lo que el servidor ha aprendido de las partidas de todos los jugadores (GET /api/colorify/tuning):
@@ -52,6 +53,7 @@ namespace Colorify
             new BoardKind(Shape.Circle, Effect.None), new BoardKind(Shape.Square, Effect.Stripes), new BoardKind(Shape.Diamond, Effect.None),
             new BoardKind(Shape.Square, Effect.Wobble), new BoardKind(Shape.Square, Effect.DarkStripes), new BoardKind(Shape.Square, Effect.Spin),
             new BoardKind(Shape.Triangle, Effect.None), new BoardKind(Shape.Square, Effect.Flash), new BoardKind(Shape.Square, Effect.Shrink),
+            new BoardKind(Shape.Square, Effect.MoveRight), new BoardKind(Shape.Square, Effect.MoveLeft),
         };
         private static float PriorDifficulty(int item) => 1.12f + 0.06f * item;
 

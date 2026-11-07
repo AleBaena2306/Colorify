@@ -145,7 +145,7 @@ namespace Colorify
             // Anillo alrededor de la muestra que se vacía mientras se ve el color (rondas de memoria)
             swatchRing = new GameObject("Ring", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
             swatchRing.rectTransform.SetParent(game, false);
-            UIKit.Place(swatchRing.rectTransform, 0.5f, 1f, Vector2.one * (Layout.SwatchSize + 44), new Vector2(0, Layout.SwatchY));
+            UIKit.Place(swatchRing.rectTransform, 0.5f, 1f, Vector2.one * (Layout.SwatchSize + 2f * RingMargin), new Vector2(0, Layout.SwatchY));
             swatchRing.sprite = RingSprite();
             swatchRing.type = Image.Type.Filled;
             swatchRing.fillMethod = Image.FillMethod.Radial360;
@@ -193,23 +193,18 @@ namespace Colorify
 
         // ---------------- Formas (círculo, triángulo, rombo) ----------------
 
-        // Cobertura (0-1, con antialias) del píxel (x, y) de una imagen cuadrada de lado «size»
-        private static float ShapeCoverage(Shape shape, int x, int y, int size)
+        // Distancia con signo al borde de la forma (positiva dentro), con u, v de -1 a 1 en su caja
+        private static float ShapeDistance(Shape shape, float u, float v)
         {
-            float half = size * 0.5f;
-            float u = (x + 0.5f - half) / half, v = (y + 0.5f - half) / half;   // -1…1
-            float px = 1f / half;                                                // un píxel en esas unidades
-            float d;                                                             // distancia con signo al borde (positiva dentro)
             switch (shape)
             {
-                case Shape.Circle: d = 0.96f - Mathf.Sqrt(u * u + v * v); break;
+                case Shape.Circle: return 0.96f - Mathf.Sqrt(u * u + v * v);
                 case Shape.Diamond:
                 {
                     // Rombo con los lados apenas abombados (superelipse con exponente 1,1): ocupa más que uno recto
                     const float p = 1.1f;
                     float r = Mathf.Pow(Mathf.Pow(Mathf.Abs(u), p) + Mathf.Pow(Mathf.Abs(v), p), 1f / p);
-                    d = (0.99f - r) * 0.74f;
-                    break;
+                    return (0.99f - r) * 0.74f;
                 }
                 case Shape.Triangle:
                 {
@@ -217,12 +212,24 @@ namespace Colorify
                     const float bottom = -0.9f, top = 0.97f;
                     float slope = (top - bottom) / 1f;
                     float sideD = (top - slope * Mathf.Abs(u) - v) / Mathf.Sqrt(1f + slope * slope);
-                    d = Mathf.Min(v - bottom, sideD);
-                    break;
+                    return Mathf.Min(v - bottom, sideD);
                 }
-                default: d = 1f; break;
+                default:
+                {
+                    // Cuadrado redondeado (como la muestra)
+                    const float rr = 0.4f, edge = 0.99f;
+                    float qx = Mathf.Abs(u) - (edge - rr), qy = Mathf.Abs(v) - (edge - rr);
+                    return -(new Vector2(Mathf.Max(qx, 0f), Mathf.Max(qy, 0f)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0f) - rr);
+                }
             }
-            return Mathf.Clamp01(d / px + 0.5f);
+        }
+
+        // Cobertura (0-1, con antialias) del píxel (x, y) de una imagen cuadrada de lado «size»
+        private static float ShapeCoverage(Shape shape, int x, int y, int size)
+        {
+            float half = size * 0.5f;
+            float u = (x + 0.5f - half) / half, v = (y + 0.5f - half) / half;
+            return Mathf.Clamp01(ShapeDistance(shape, u, v) * half + 0.5f);
         }
 
         private static readonly Dictionary<Shape, Sprite> shapeCache = new Dictionary<Shape, Sprite>();
@@ -273,25 +280,40 @@ namespace Colorify
         }
 
         // Contorno redondeado (para el anillo de tiempo de la muestra de memoria)
-        private static Sprite RingSprite()
+        // Anillo de tiempo de la muestra de memoria: contorno de la forma de la figura, a la misma distancia de su
+        // borde por todos los lados (RingMargin, RingGap y RingThickness en unidades de pantalla)
+        private const float RingMargin = 40f, RingGap = 12f, RingThickness = 9f;
+        private static readonly Dictionary<Shape, Sprite> ringCache = new Dictionary<Shape, Sprite>();
+        public static Sprite RingSprite(Shape shape = Shape.Square)
         {
-            const int size = 200;
-            const float radius = size * 0.2f, thick = 7f;
+            Sprite cached;
+            if (ringCache.TryGetValue(shape, out cached) && cached != null) return cached;
+            const int size = 240;
+            float swatch = Layout.SwatchSize * ShapeScale(shape), ring = swatch + 2f * RingMargin;
+            float k = ring / swatch, half = size * 0.5f, unitsHalf = swatch * 0.5f;
+            float pxU = k / half, gap = RingGap / unitsHalf, thick = RingThickness / unitsHalf;
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
             var px = new Color32[size * size];
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
                 {
-                    // Distancia con signo al rectángulo redondeado (negativa dentro)
-                    float qx = Mathf.Abs(x + 0.5f - size / 2f) - (size / 2f - radius);
-                    float qy = Mathf.Abs(y + 0.5f - size / 2f) - (size / 2f - radius);
-                    float dist = new Vector2(Mathf.Max(qx, 0f), Mathf.Max(qy, 0f)).magnitude + Mathf.Min(Mathf.Max(qx, qy), 0f) - radius;
-                    float a = Mathf.Clamp01(thick / 2f - Mathf.Abs(dist + thick / 2f + 1f) + 0.5f);
+                    float u = (x + 0.5f - half) / half * k, v = (y + 0.5f - half) / half * k;
+                    float d = ShapeDistance(shape, u, v);
+                    float a = Mathf.Clamp01((-gap - d) / pxU + 0.5f) * Mathf.Clamp01((d + gap + thick) / pxU + 0.5f);
                     px[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255f));
                 }
             tex.SetPixels32(px);
             tex.Apply(false, true);
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            ringCache[shape] = sprite;
+            return sprite;
+        }
+
+        // Pone el anillo de tiempo con la forma y el tamaño de la muestra
+        public void FitRing(Shape shape)
+        {
+            swatchRing.sprite = RingSprite(shape);
+            swatchRing.rectTransform.sizeDelta = Vector2.one * (Layout.SwatchSize * ShapeScale(shape) + 2f * RingMargin);
         }
 
         private void BuildBoard()
