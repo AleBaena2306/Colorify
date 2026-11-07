@@ -203,12 +203,19 @@ namespace Colorify
             switch (shape)
             {
                 case Shape.Circle: d = 0.96f - Mathf.Sqrt(u * u + v * v); break;
-                case Shape.Diamond: d = (0.98f - (Mathf.Abs(u) + Mathf.Abs(v))) * 0.7071f; break;
+                case Shape.Diamond:
+                {
+                    // Rombo con los lados apenas abombados (superelipse con exponente 1,1): ocupa más que uno recto
+                    const float p = 1.1f;
+                    float r = Mathf.Pow(Mathf.Pow(Mathf.Abs(u), p) + Mathf.Pow(Mathf.Abs(v), p), 1f / p);
+                    d = (0.99f - r) * 0.74f;
+                    break;
+                }
                 case Shape.Triangle:
                 {
                     // Triángulo equilátero apuntando hacia arriba, centrado en su caja
-                    const float bottom = -0.82f, top = 0.92f;
-                    float slope = (top - bottom) / 0.98f;
+                    const float bottom = -0.9f, top = 0.97f;
+                    float slope = (top - bottom) / 1f;
                     float sideD = (top - slope * Mathf.Abs(u) - v) / Mathf.Sqrt(1f + slope * slope);
                     d = Mathf.Min(v - bottom, sideD);
                     break;
@@ -236,7 +243,18 @@ namespace Colorify
             return sprite;
         }
 
-        // Cambia la forma de una imagen. El cuadrado es el de siempre (sprite redondeado, 9-slice)
+        // Las formas con picos (rombo y triángulo) se dibujan algo más grandes que su casilla para que, a la vista,
+        // ocupen lo mismo que el cuadrado (sin llegar a tocar a las vecinas)
+        public static float ShapeScale(Shape shape) => shape == Shape.Diamond ? 1.07f : shape == Shape.Triangle ? 1.07f : shape == Shape.Circle ? 1.03f : 1f;
+
+        // Cambia la forma de una imagen. El cuadrado es el de siempre (sprite redondeado, 9-slice).
+        // baseSize: lado de la casilla sin escalar
+        public static void SetShape(Image img, Shape shape, float squareRadius, float baseSize)
+        {
+            img.rectTransform.sizeDelta = Vector2.one * baseSize * ShapeScale(shape);
+            SetShape(img, shape, squareRadius);
+        }
+
         public static void SetShape(Image img, Shape shape, float squareRadius)
         {
             if (shape == Shape.Square)
@@ -305,10 +323,13 @@ namespace Colorify
             banner.enableWordWrapping = false;
         }
 
+        public float TileSize { get; private set; }
+
         public void LayoutTiles(int n)
         {
             float gap = n <= 3 ? 26f : n <= 5 ? 18f : 12f;
             float size = (Layout.BoardSize - gap * (n + 1)) / n;
+            TileSize = size;
             float radius = n <= 3 ? 0.45f : n <= 5 ? 0.7f : 1.1f;
             for (int i = 0; i < tiles.Count; i++)
             {

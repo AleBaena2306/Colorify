@@ -50,11 +50,14 @@ ni en el ranking, pero su código sigue en el proyecto (`RunState`, cartas) por 
 - **Calentamiento**: los primeros `normalWarmupHits` aciertos (8) son en 2×2 con colores normales.
 - **Cuadrícula**: luego 3×3, 4×4 y 5×5 como máximo (`normalSpecialMaxGrid`), un tamaño cada `normalHitsPerGridStep`
   aciertos. El crecimiento ya no es solo vertical (más casillas), sino horizontal: tableros especiales.
-- **Especiales** (`Specials.cs`): formas de fichas y muestra (círculo, triángulo, rombo) y efectos de la muestra
-  (rayas blancas, rayas oscuras, memoria, tambaleo, encoger hasta desaparecer y giro). Tras el calentamiento salen
-  cada vez más a menudo hasta que, a los `normalSpecialRampHits` aciertos (40), ya no hay tableros normales; cada
-  `normalUnlockEveryHits` aciertos (4) se desbloquea uno nuevo, en el orden que a los jugadores les resulta más fácil
-  (lo aprende el servidor); más adelante se combinan forma y efecto (`normalComboMax`).
+- **Formas** (`Specials.cs`): tras el calentamiento, cada tablero sale en cuadrado, círculo, triángulo o rombo, las
+  cuatro igual de probables. No cuentan como especial. El rombo y el triángulo se dibujan un 7 % más grandes que su
+  casilla (`ColorifyView.ShapeScale`) para no verse pequeños al lado del cuadrado.
+- **Especiales**: efectos sobre la muestra (rayas blancas, rayas oscuras, memoria, tambaleo, encoger hasta
+  desaparecer y giro), sobre cualquier forma. Tras el calentamiento la mitad de los tableros llevan uno
+  (`normalSpecialStartShare`) y, a los `normalSpecialRampHits` aciertos (40), todos. Cada `normalUnlockEveryHits`
+  aciertos (4) se desbloquea uno nuevo, en el orden que a los jugadores les resulta más fácil (lo aprende el
+  servidor), y el tablero siguiente lo enseña con su aviso.
 - **Puntos**: cada acierto da puntos según el tamaño, la dificultad aprendida del tablero y la rapidez frente al
   tiempo medio de los jugadores en ese tablero. Los aciertos rápidos encadenados suben el multiplicador (X2!, X3!…
   hasta `chainMax`); un acierto lento o un fallo lo devuelve a x1. El chip de la esquina muestra el multiplicador.

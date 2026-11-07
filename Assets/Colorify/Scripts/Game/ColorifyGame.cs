@@ -555,7 +555,7 @@ namespace Colorify
                 ShowBoard(current);
                 ApplyKind(normal.kind);
                 // Aviso grande al entrar en un especial nuevo o al crecer la cuadrícula
-                if (!normal.kind.IsPlain && !normal.kind.Same(previous)) ShowBanner(normal.kind.Banner);
+                if (normal.kind.fx != Effect.None && normal.kind.fx != previous.fx) ShowBanner(normal.kind.Banner);
                 else if (lastBoardSize > 0 && current.size != lastBoardSize) ShowBanner($"{current.size}×{current.size}");
                 lastBoardSize = current.size;
             }
@@ -587,9 +587,9 @@ namespace Colorify
             fxTime = 0f;
             int count = current != null ? current.size * current.size : 0;
             float tileRadius = v.tiles.Count > 0 ? v.tiles[0].image.pixelsPerUnitMultiplier : 0.5f;
-            for (int i = 0; i < count && i < v.tiles.Count; i++) ColorifyView.SetShape(v.tiles[i].image, kind.shape, tileRadius);
-            ColorifyView.SetShape(v.swatch, kind.shape, 0.35f);
-            ColorifyView.SetShape(v.swatchShadow, kind.shape, 0.35f);
+            for (int i = 0; i < count && i < v.tiles.Count; i++) ColorifyView.SetShape(v.tiles[i].image, kind.shape, tileRadius, v.TileSize);
+            ColorifyView.SetShape(v.swatch, kind.shape, 0.35f, ColorifyView.Layout.SwatchSize);
+            ColorifyView.SetShape(v.swatchShadow, kind.shape, 0.35f, ColorifyView.Layout.SwatchSize);
 
             bool stripes = kind.fx == Effect.Stripes || kind.fx == Effect.DarkStripes;
             v.swatchStripes.gameObject.SetActive(stripes);
@@ -698,8 +698,8 @@ namespace Colorify
             v.swatchRing.gameObject.SetActive(false);
             v.swatchHidden.gameObject.SetActive(false);
             SetSwatchTransform(0f, 1f, Vector2.zero);
-            ColorifyView.SetShape(v.swatch, Shape.Square, 0.35f);
-            ColorifyView.SetShape(v.swatchShadow, Shape.Square, 0.35f);
+            ColorifyView.SetShape(v.swatch, Shape.Square, 0.35f, ColorifyView.Layout.SwatchSize);
+            ColorifyView.SetShape(v.swatchShadow, Shape.Square, 0.35f, ColorifyView.Layout.SwatchSize);
             v.LayoutTiles(b.size);
             for (int i = 0; i < b.size * b.size && i < v.tiles.Count; i++) ColorifyView.SetShape(v.tiles[i].image, Shape.Square, v.tiles[i].image.pixelsPerUnitMultiplier);
             for (int i = 0; i < b.tiles.Count; i++)

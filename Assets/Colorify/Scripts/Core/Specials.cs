@@ -24,18 +24,10 @@ namespace Colorify
         public static readonly BoardKind Plain = new BoardKind(Shape.Square, Effect.None);
         public bool Same(BoardKind o) => shape == o.shape && fx == o.fx;
 
-        // Texto del aviso grande al entrar en un tablero especial
-        public string Banner
-        {
-            get
-            {
-                string s = shape == Shape.Circle ? "CIRCLES" : shape == Shape.Triangle ? "TRIANGLES" : shape == Shape.Diamond ? "DIAMONDS" : "";
-                string f = fx == Effect.Stripes ? "STRIPES" : fx == Effect.DarkStripes ? "DARK STRIPES" : fx == Effect.Flash ? "REMEMBER IT"
-                    : fx == Effect.Wobble ? "WOBBLE" : fx == Effect.Shrink ? "SHRINKING" : fx == Effect.Spin ? "SPIN" : "";
-                if (s != "" && f != "") return s + " + " + f + "!";
-                return (s != "" ? s : f) + (s != "" || f != "" ? "!" : "");
-            }
-        }
+        // Texto del aviso grande al entrar en un efecto especial (las formas no son especiales: no tienen aviso)
+        public string Banner =>
+            fx == Effect.Stripes ? "STRIPES!" : fx == Effect.DarkStripes ? "DARK STRIPES!" : fx == Effect.Flash ? "REMEMBER IT!"
+            : fx == Effect.Wobble ? "WOBBLE!" : fx == Effect.Shrink ? "SHRINKING!" : fx == Effect.Spin ? "SPIN!" : "";
     }
 
     // Lo que el servidor ha aprendido de las partidas de todos los jugadores (GET /api/colorify/tuning):
@@ -107,36 +99,28 @@ namespace Colorify
             return Mathf.Clamp(d, 1f, 5f);
         }
 
-        // Orden en el que se desbloquean los especiales: formas y efectos alternados (forma, efecto, forma…),
-        // cada grupo de lo que a los jugadores les resulta más fácil a lo más difícil según lo aprendido (con la
-        // referencia mientras no haya datos). Así las formas nuevas llegan pronto y no solo efectos sobre cuadrados.
+        // Orden en el que se desbloquean los efectos especiales: de lo que a los jugadores les resulta más fácil a
+        // lo más difícil según lo aprendido (con la referencia mientras no haya datos). Las formas no entran:
+        // son la base de cada tablero y todas salen con la misma probabilidad.
         public List<int> UnlockOrder()
         {
             var diff = new float[Items.Length];
-            var shapes = new List<int>();
             var effects = new List<int>();
             for (int i = 0; i < Items.Length; i++)
             {
                 diff[i] = ItemDifficulty(i);
-                (Items[i].shape != Shape.Square ? shapes : effects).Add(i);
+                if (Items[i].shape == Shape.Square) effects.Add(i);
             }
-            System.Comparison<int> byDiff = (a, b) => diff[a] != diff[b] ? diff[a].CompareTo(diff[b]) : a.CompareTo(b);
-            shapes.Sort(byDiff);
-            effects.Sort(byDiff);
-            var order = new List<int>();
-            for (int i = 0; i < Mathf.Max(shapes.Count, effects.Count); i++)
-            {
-                if (i < shapes.Count) order.Add(shapes[i]);
-                if (i < effects.Count) order.Add(effects[i]);
-            }
-            return order;
+            effects.Sort((a, b) => diff[a] != diff[b] ? diff[a].CompareTo(diff[b]) : a.CompareTo(b));
+            return effects;
         }
     }
 
     // Progresión del modo Normal (y forma de cada ronda de carrera en el servidor, kinds.js):
-    //  · Calentamiento: los primeros aciertos en 2×2, solo colores normales.
-    //  · Luego la cuadrícula crece hasta 5×5 como mucho y empiezan los especiales: cada vez más a menudo
-    //    hasta que ya no salen tableros normales, y con el tiempo combinan forma y efecto.
+    //  · Calentamiento: los primeros aciertos en 2×2, cuadrados y colores normales.
+    //  · Luego la cuadrícula crece hasta 5×5. Cada tablero tiene una forma (cuadrado, círculo, triángulo o
+    //    rombo, las cuatro igual de probables) y, cada vez más a menudo, un efecto especial sobre la muestra,
+    //    hasta que todos los tableros llevan uno.
     public static class Progression
     {
         public static int GridSize(ColorifyConfig cfg, int hits)
@@ -148,7 +132,7 @@ namespace Colorify
             return Mathf.Min(max, 3 + (hits - warm) / step);
         }
 
-        // Proporción de tableros especiales tras el calentamiento: empieza en normalSpecialStartShare y llega a 1
+        // Proporción de tableros con efecto especial tras el calentamiento: empieza en normalSpecialStartShare y llega a 1
         public static float SpecialShare(ColorifyConfig cfg, int hits)
         {
             int warm = Mathf.Max(0, cfg.normalWarmupHits);
@@ -157,52 +141,35 @@ namespace Colorify
             return Mathf.Lerp(Mathf.Clamp01(cfg.normalSpecialStartShare), 1f, k);
         }
 
-        // Forma y efecto son dos ejes independientes. Cada normalUnlockEveryHits aciertos se desbloquea uno nuevo
-        // (alternando forma y efecto) y el tablero siguiente lo enseña sí o sí. Después, cada tablero especial
-        // lleva una forma, un efecto o, cada vez más a menudo, las dos cosas.
+        // Cada normalUnlockEveryHits aciertos se desbloquea un efecto nuevo y el tablero siguiente lo enseña sí o sí
         public static BoardKind Pick(ColorifyConfig cfg, Tuning tuning, int hits, BoardKind previous, System.Random rng)
         {
             int warm = Mathf.Max(0, cfg.normalWarmupHits);
             if (hits < warm) return BoardKind.Plain;
+            var kind = new BoardKind((Shape)rng.Next(4), Effect.None);
             int since = hits - warm, every = Mathf.Max(1, cfg.normalUnlockEveryHits);
             var order = tuning.UnlockOrder();
             int unlocked = Mathf.Clamp(1 + since / every, 1, order.Count);
             int newest = order[unlocked - 1];
-            if (since % every == 0 && since / every < order.Count) return Tuning.Items[newest];   // novedad
-            if (rng.NextDouble() >= SpecialShare(cfg, hits)) return BoardKind.Plain;
-
-            var shapes = new List<int>();
-            var effects = new List<int>();
-            for (int i = 0; i < unlocked; i++) (Tuning.Items[order[i]].shape != Shape.Square ? shapes : effects).Add(order[i]);
-
-            float combo = Mathf.Clamp01((since - cfg.normalSpecialRampHits * 0.5f) / Mathf.Max(1f, cfg.normalComboRampHits)) * cfg.normalComboMax;
-            bool wantShape, wantFx;
-            if (shapes.Count > 0 && effects.Count > 0 && rng.NextDouble() < combo) wantShape = wantFx = true;
-            else if (effects.Count == 0) { wantShape = true; wantFx = false; }
-            else if (shapes.Count == 0) { wantShape = false; wantFx = true; }
-            else { wantShape = rng.NextDouble() < cfg.normalShapeShare; wantFx = !wantShape; }
-
-            var kind = BoardKind.Plain;
-            if (wantShape) kind.shape = Tuning.Items[PickOne(shapes, newest, previous, rng)].shape;
-            if (wantFx) kind.fx = Tuning.Items[PickOne(effects, newest, previous, rng)].fx;
+            if (since % every == 0 && since / every < order.Count) { kind.fx = Tuning.Items[newest].fx; return kind; }   // novedad
+            if (rng.NextDouble() < SpecialShare(cfg, hits)) kind.fx = Tuning.Items[PickOne(order, unlocked, newest, previous, rng)].fx;
             return kind;
         }
 
-        // Elección dentro de un grupo: lo recién desbloqueado pesa el doble y se evita repetir lo del tablero anterior
-        private static int PickOne(List<int> items, int newest, BoardKind previous, System.Random rng)
+        // Lo recién desbloqueado pesa el doble y se evita repetir el efecto del tablero anterior
+        private static int PickOne(List<int> order, int unlocked, int newest, BoardKind previous, System.Random rng)
         {
-            var w = new float[items.Count];
+            var w = new float[unlocked];
             float total = 0f;
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < unlocked; i++)
             {
-                var it = Tuning.Items[items[i]];
-                w[i] = items[i] == newest ? 2f : 1f;
-                if ((it.shape != Shape.Square && it.shape == previous.shape) || (it.fx != Effect.None && it.fx == previous.fx)) w[i] *= 0.4f;
+                w[i] = order[i] == newest ? 2f : 1f;
+                if (Tuning.Items[order[i]].fx == previous.fx) w[i] *= 0.4f;
                 total += w[i];
             }
             double r = rng.NextDouble() * total;
-            for (int i = 0; i < items.Count; i++) { r -= w[i]; if (r <= 0) return items[i]; }
-            return items[items.Count - 1];
+            for (int i = 0; i < unlocked; i++) { r -= w[i]; if (r <= 0) return order[i]; }
+            return order[unlocked - 1];
         }
     }
 

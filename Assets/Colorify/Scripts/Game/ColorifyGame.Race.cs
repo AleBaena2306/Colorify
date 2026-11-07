@@ -435,7 +435,7 @@ namespace Colorify
             // Forma y efecto de la ronda (los elige el servidor, igual para todos)
             var kind = new BoardKind((Shape)Mathf.Clamp(m.shape, 0, 3), (Effect)Mathf.Clamp(m.fx, 0, 6));
             ApplyKind(kind);
-            if (!kind.IsPlain) ShowBanner(kind.Banner);
+            if (kind.fx != Effect.None) ShowBanner(kind.Banner);
             sfx.Play(Sfx.Id.Go);
             raceShownAt = Time.realtimeSinceStartup;
             state = State.Playing;

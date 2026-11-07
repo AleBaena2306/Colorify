@@ -165,17 +165,12 @@ namespace Colorify
         public int normalWarmupHits = 8;
         [Tooltip("Cuadrícula máxima en Normal y carreras (el duelo sigue con la suya)")]
         public int normalSpecialMaxGrid = 5;
-        [Tooltip("Proporción de tableros especiales justo después del calentamiento…")]
+        [Tooltip("Proporción de tableros con efecto especial justo después del calentamiento…")]
         [Range(0, 1)] public float normalSpecialStartShare = 0.5f;
-        [Tooltip("…y aciertos tras el calentamiento hasta que solo salen tableros especiales")]
+        [Tooltip("…y aciertos tras el calentamiento hasta que todos los tableros llevan efecto")]
         public int normalSpecialRampHits = 40;
-        [Tooltip("En un tablero especial con un solo cambio, probabilidad de que sea de forma (y no de efecto)")]
-        [Range(0, 1)] public float normalShapeShare = 0.65f;
-        [Tooltip("Cada cuántos aciertos se desbloquea un especial nuevo (en orden de dificultad aprendida)")]
+        [Tooltip("Cada cuántos aciertos se desbloquea un efecto nuevo (en orden de dificultad aprendida)")]
         public int normalUnlockEveryHits = 4;
-        [Tooltip("Aciertos, después de la rampa, hasta llegar a la probabilidad máxima de combinar forma y efecto")]
-        public int normalComboRampHits = 40;
-        [Range(0, 1)] public float normalComboMax = 0.6f;
         [Tooltip("Encoger: segundos hasta que la muestra desaparece")]
         public float normalShrinkSeconds = 2.6f;
         [Tooltip("Tambaleo: grados de balanceo de la muestra")]
