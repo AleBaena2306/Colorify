@@ -161,6 +161,12 @@ public static class KovusPridePublish
         }
         finally { snapshot.Restore(); }
 
+        if (report.summary.result == BuildResult.Cancelled)
+        {
+            Log(p, version, "CANCELADA", 0, 0, 0, "compilación cancelada en Unity");
+            Fail(title, "La compilación se ha cancelado. Vuelve a lanzarla cuando quieras.");
+            return false;
+        }
         if (report.summary.result != BuildResult.Succeeded)
         {
             Log(p, version, "ERROR DE COMPILACIÓN", 0, 0, 0, $"{report.summary.totalErrors} errores en la consola");
