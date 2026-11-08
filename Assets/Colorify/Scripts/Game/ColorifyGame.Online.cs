@@ -74,6 +74,9 @@ namespace Colorify
             UIKit.Place(onlineTrophies.rectTransform, 0.5f, 0.5f, new Vector2(1000, 56), new Vector2(0, 118));
             var rename = UIKit.Button("Rename", onlineMenu.transform, "CHANGE NAME", UIKit.PaperDark, new Vector2(340, 74), ShowNameEditor, 34);
             UIKit.Place((RectTransform)rename.transform, 0.5f, 0.5f, new Vector2(340, 74), new Vector2(0, 50));
+            // Guardar un nombre propio exige cuenta de Google, que los portales no permiten: allí se juega con
+            // el nombre generado (o, más adelante, con el de la cuenta del portal)
+            rename.gameObject.SetActive(KovusPride.Publishing.StorePlatform.AllowsExternalLogin);
             var find = UIKit.Button("Duel", onlineMenu.transform, "DUEL  <size=60%>1 VS 1</size>", ColorifyView.TitleColors[2], new Vector2(680, 150), ShowDuelMenu, 66);
             UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -70));
             var race = UIKit.Button("Race", onlineMenu.transform, "RACE  <size=60%>UP TO 8</size>", ColorifyView.TitleColors[4], new Vector2(680, 150), ShowRace, 66);

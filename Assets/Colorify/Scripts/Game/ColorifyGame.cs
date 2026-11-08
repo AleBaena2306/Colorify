@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using KovusPride.Publishing;
 using UnityEngine;
 using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
@@ -68,6 +69,13 @@ namespace Colorify
             BuildOverlays();
             RegisterBackActions();
             ShowMenu(instant: true);
+            // Plataforma (portfolio, CrazyGames, Playgama, GameDistribution, itch.io): el portal puede pedir pausar
+            StorePlatform.Init();
+            StorePlatform.PauseRequested += paused =>
+            {
+                if (paused && (state == State.Playing || state == State.Countdown) && mode != Mode.Race && mode != Mode.Online) Pause();
+            };
+            StorePlatform.GameReady();
             StartCoroutine(LoadTuning());
         }
 
@@ -171,9 +179,11 @@ namespace Colorify
             UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
             v.overContinue = UIKit.Button("Continue", v.gameOver.transform, "WATCH AD · ONE MORE TRY", ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
             UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(820, 150), new Vector2(0, 10));
-            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { FinishRun("lose"); StartRun(mode); }, 70);
+            // En los portales, al salir de la pantalla de fin de partida puede tocar un intersticial (la capa de
+            // publicación decide: nunca en partida, como mucho uno cada 3 minutos)
+            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); var m = mode; StorePlatform.ShowInterstitial("game_over", () => StartRun(m)); }, 70);
             UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, -180));
-            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { FinishRun("lose"); ShowMenu(); }, 50);
+            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); StorePlatform.ShowInterstitial("game_over", () => ShowMenu()); }, 50);
             UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -350));
 
             // --- Victoria (primera ronda 8×8 superada) ---
@@ -820,6 +830,9 @@ namespace Colorify
 
         private void Update()
         {
+            // El portal sabe en todo momento si se está jugando (CrazyGames: gameplayStart / gameplayStop)
+            bool playing = state == State.Playing || state == State.Countdown || state == State.Resolving;
+            if (playing != StorePlatform.GameplayActive) { if (playing) StorePlatform.GameplayStart(); else StorePlatform.GameplayStop(); }
             UpdateOnline();
             if (state == State.Playing && normal != null) normalPlayMs += Mathf.Min(Time.deltaTime, 0.1f) * 1000f;
             if (PausePressed())

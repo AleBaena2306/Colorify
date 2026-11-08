@@ -69,6 +69,9 @@ namespace Colorify.Online
         {
             string fallback = string.IsNullOrEmpty(cfg.onlineBaseUrl) ? "https://alejandrobaenaportfolio.com" : cfg.onlineBaseUrl.TrimEnd('/');
 #if UNITY_WEBGL && !UNITY_EDITOR
+            // En los portales (CrazyGames, Playgama…) el juego está en otro dominio: el servidor es siempre el del
+            // portfolio. En el portfolio se usa la misma web (vale para www, sin www y las vistas previas)
+            if (KovusPride.Publishing.StorePlatform.IsPortal) return fallback;
             try
             {
                 var u = new Uri(Application.absoluteURL);

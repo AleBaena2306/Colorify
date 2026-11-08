@@ -53,7 +53,13 @@ namespace Colorify
     public class Ads : MonoBehaviour
     {
         public static Ads Instance { get; private set; }
-        public bool IsReady { get; private set; }
+        // En los portales manda la capa de publicación (el SDK de CrazyGames, Playgama o GameDistribution)
+        public bool IsReady
+        {
+            get => KovusPride.Publishing.StorePlatform.IsPortal ? KovusPride.Publishing.StorePlatform.RewardedAvailable : ownReady;
+            private set => ownReady = value;
+        }
+        private bool ownReady;
         public bool IsShowing { get; private set; }
         private Action<bool> onDone;
 
@@ -80,6 +86,7 @@ namespace Colorify
 
         private void Start()
         {
+            if (KovusPride.Publishing.StorePlatform.IsPortal) return;   // sin AdSense fuera del portfolio
 #if UNITY_WEBGL && !UNITY_EDITOR
             // El ID de editor lo pone la página (window.KP_ADSENSE_CLIENT, definido en build.js del portfolio):
             // no se repite aquí para que viva en un solo sitio
@@ -95,6 +102,18 @@ namespace Colorify
         public void ShowRewarded(string placement, Action<bool> done)
         {
             if (!IsReady || IsShowing) { done?.Invoke(false); return; }
+            if (KovusPride.Publishing.StorePlatform.IsPortal)
+            {
+                IsShowing = true;
+                Analytics.Log("ad_rewarded_show", ("placement", placement));
+                KovusPride.Publishing.StorePlatform.ShowRewarded(placement, ok =>
+                {
+                    IsShowing = false;
+                    if (ok) Analytics.Log("ad_reward_earned", ("placement", placement));
+                    done?.Invoke(ok);
+                });
+                return;
+            }
             IsShowing = true;
             onDone = done;
             AudioListener.pause = true;

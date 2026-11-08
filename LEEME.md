@@ -121,3 +121,10 @@ Assets/Plugins/WebGL              KovusPrideWeb/Analytics.jslib (de MASSBOUND) +
 - Ranking global y duelos en Cloudflare (Durable Objects, plan gratuito) en lugar de Firebase.
 - Anti-trampas básico: el servidor valida nombres, límites y ritmo de aciertos, pero no comprueba cada toque.
 - La analítica web no envía nada hasta que la página del portfolio implemente `window.kpAnalytics` con consentimiento.
+
+## Publicación en portales (CrazyGames, Playgama, GameDistribution, itch.io)
+
+`COLORIFY > Build > CrazyGames / Playgama / GameDistribution / itch.io / Todos los portales`. Cada menú deja un zip
+listo en `Builds/Publish/<plataforma>/` tras comprobar los requisitos de la plataforma. El juego habla con todas
+mediante `KovusPride.Publishing.StorePlatform`. En los portales usa el servidor del portfolio, no tiene inicio de
+sesión con Google y usa los anuncios del portal. Todo está explicado en `Publishing/README.md`.

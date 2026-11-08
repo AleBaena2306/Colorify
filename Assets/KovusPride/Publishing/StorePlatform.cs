@@ -1,0 +1,251 @@
+using System;
+using System.Collections;
+using UnityEngine;
+#if UNITY_WEBGL && !UNITY_EDITOR
+using System.Runtime.InteropServices;
+using AOT;
+#endif
+
+namespace KovusPride.Publishing
+{
+    // Dónde se está jugando. Lo decide la build: el menú de publicación compila cada plataforma con su símbolo
+    // (KP_STORE_CRAZYGAMES, KP_STORE_PLAYGAMA, KP_STORE_GAMEDISTRIBUTION, KP_STORE_ITCH). Sin símbolo, es el portfolio.
+    public enum Store { Portfolio, CrazyGames, Playgama, GameDistribution, Itch }
+
+    // Capa común de plataforma. El juego llama siempre a esto y nunca a un SDK concreto:
+    //   StorePlatform.Init()                    al arrancar
+    //   StorePlatform.GameReady()               cuando el jugador ya puede jugar (menú visible)
+    //   StorePlatform.GameplayStart() / Stop()  al empezar o reanudar una partida / al pausar, perder o ir al menú
+    //   StorePlatform.Happytime()               en un logro grande (récord), con moderación
+    //   StorePlatform.ShowInterstitial(...)     en una pausa natural (fin de partida); la capa decide si toca
+    //   StorePlatform.ShowRewarded(...)         solo cuando el jugador lo pide (continuar, etc.)
+    // Reglas que se cumplen aquí dentro, en todas las plataformas, para que ningún juego las pueda romper:
+    //   · Nunca un intersticial durante la partida.
+    //   · Entre intersticiales, como mínimo InterstitialMinSeconds (CrazyGames corta a los 3 minutos).
+    //   · Ninguno en los primeros FirstInterstitialSeconds de la sesión.
+    //   · Mientras hay un anuncio, el audio está en pausa.
+    //   · Sin SDK o sin anuncios (CrazyGames en Basic Launch, itch.io, bloqueadores), todo responde «no» y el
+    //     juego sigue igual, sin esperas.
+    // El código de cada SDK está en el WebGL Template de cada plataforma (kp-platform.js); aquí solo se habla
+    // con window.KPPlatform a través de KovusPridePlatform.jslib.
+    public static class StorePlatform
+    {
+        public static Store Current
+        {
+            get
+            {
+#if KP_STORE_CRAZYGAMES
+                return Store.CrazyGames;
+#elif KP_STORE_PLAYGAMA
+                return Store.Playgama;
+#elif KP_STORE_GAMEDISTRIBUTION
+                return Store.GameDistribution;
+#elif KP_STORE_ITCH
+                return Store.Itch;
+#else
+                return Store.Portfolio;
+#endif
+            }
+        }
+
+        public static bool IsPortal => Current != Store.Portfolio;
+
+        // Inicio de sesión con Google u otras cuentas propias: solo en el portfolio. Los portales lo prohíben
+        // (CrazyGames: «No external login options») y además Google solo admite el dominio del portfolio.
+        public static bool AllowsExternalLogin => Current == Store.Portfolio;
+
+        // Enlaces que abren otras webs (privacidad, portfolio): los portales los suelen rechazar
+        public static bool AllowsExternalLinks => Current == Store.Portfolio || Current == Store.Itch;
+
+        public static float InterstitialMinSeconds = 180f;
+        public static float FirstInterstitialSeconds = 90f;
+
+        public static bool Ready { get; private set; }
+        public static bool InterstitialAvailable { get; private set; }
+        public static bool RewardedAvailable { get; private set; }
+        public static bool AdShowing { get; private set; }
+        public static bool GameplayActive { get; private set; }
+        // Nombre del jugador en la plataforma (CrazyGames, Playgama) si ha iniciado sesión allí; si no, vacío
+        public static string PlayerName { get; private set; } = "";
+        public static event Action<bool> PauseRequested;   // la plataforma pide pausar (true) o reanudar (false)
+        public static event Action<bool> MuteRequested;    // la plataforma pide silenciar (true) o no (false)
+        public static event Action OnReady;
+
+        private static bool initialized, gameReadySent, platformMuted;
+        private static float lastAdTime = -9999f, sessionStart;
+        private static int nextAdId = 1, pendingId;
+        private static Action<bool> pendingDone;
+        private static bool pendingRewarded;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private delegate void EventCallback(int kind, IntPtr json);
+        [DllImport("__Internal")] private static extern void KPP_Init(EventCallback cb);
+        [DllImport("__Internal")] private static extern void KPP_Message(string name);
+        [DllImport("__Internal")] private static extern void KPP_ShowAd(int id, string type, string placement);
+
+        [MonoPInvokeCallback(typeof(EventCallback))]
+        private static void OnJsEvent(int kind, IntPtr json)
+        {
+            string s = json == IntPtr.Zero ? "{}" : Marshal.PtrToStringUTF8(json);
+            try { HandleEvent(kind, s); } catch (Exception e) { Debug.LogWarning("[Platform] " + e.Message); }
+        }
+#endif
+
+        // Mensajes de window.KPPlatform: 1 listo, 2 fin de anuncio, 3 pausa, 4 silencio, 5 empieza un anuncio
+        [Serializable] private class JsEvent { public string store; public int ads, rewarded, id, ok, on; public string user; }
+
+        private static void HandleEvent(int kind, string json)
+        {
+            var e = JsonUtility.FromJson<JsEvent>(json) ?? new JsEvent();
+            switch (kind)
+            {
+                case 1:
+                    Ready = true;
+                    InterstitialAvailable = e.ads == 1;
+                    RewardedAvailable = e.rewarded == 1;
+                    PlayerName = string.IsNullOrEmpty(e.user) ? "" : e.user;
+                    Debug.Log($"[Platform] {Current} listo · intersticiales {InterstitialAvailable} · bonificados {RewardedAvailable}" +
+                              (PlayerName != "" ? $" · jugador {PlayerName}" : ""));
+                    OnReady?.Invoke();
+                    break;
+                case 2:
+                    if (e.id == pendingId) FinishAd(e.ok == 1);
+                    break;
+                case 3:
+                    PauseRequested?.Invoke(e.on == 1);
+                    break;
+                case 4:
+                    platformMuted = e.on == 1;
+                    ApplyAudio();
+                    MuteRequested?.Invoke(platformMuted);
+                    break;
+                case 5:
+                    ApplyAudio();
+                    break;
+            }
+        }
+
+        public static void Init()
+        {
+            if (initialized) return;
+            initialized = true;
+            sessionStart = Time.realtimeSinceStartup;
+            Debug.Log($"[Platform] Plataforma: {Current}");
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (IsPortal)
+            {
+                try { KPP_Init(OnJsEvent); }
+                catch (Exception e) { Debug.LogWarning("[Platform] " + e.Message); HandleEvent(1, "{}"); }
+                return;
+            }
+#endif
+            // Portfolio y Editor: sin SDK de portal. En el Editor, con un símbolo de portal activo, se simulan
+            // los anuncios para poder probar el flujo.
+            bool simulate = Application.isEditor && IsPortal;
+            HandleEvent(1, simulate ? "{\"ads\":1,\"rewarded\":1}" : "{}");
+        }
+
+        private static void Message(string name)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (!IsPortal) return;
+            try { KPP_Message(name); } catch (Exception) { }
+#else
+            if (Application.isEditor && IsPortal) Debug.Log("[Platform] " + name);
+#endif
+        }
+
+        public static void GameReady()
+        {
+            if (gameReadySent) return;
+            gameReadySent = true;
+            Message("loading_stopped");
+            Message("game_ready");
+        }
+
+        public static void GameplayStart()
+        {
+            if (GameplayActive) return;
+            GameplayActive = true;
+            Message("gameplay_started");
+        }
+
+        public static void GameplayStop()
+        {
+            if (!GameplayActive) return;
+            GameplayActive = false;
+            Message("gameplay_stopped");
+        }
+
+        public static void Happytime() => Message("happytime");
+
+        // ¿Se podría enseñar un intersticial ahora mismo? (para no ofrecer nada que luego no salga)
+        public static bool CanShowInterstitial =>
+            Ready && InterstitialAvailable && !AdShowing && !GameplayActive &&
+            Time.realtimeSinceStartup - sessionStart >= FirstInterstitialSeconds &&
+            Time.realtimeSinceStartup - lastAdTime >= InterstitialMinSeconds;
+
+        // done siempre se llama (también si no toca anuncio), así el juego puede seguir en el mismo sitio
+        public static void ShowInterstitial(string placement, Action done)
+        {
+            if (!CanShowInterstitial) { done?.Invoke(); return; }
+            StartAd("interstitial", placement, _ => done?.Invoke());
+        }
+
+        // done(true) = el jugador ha visto el anuncio entero y gana la recompensa
+        public static void ShowRewarded(string placement, Action<bool> done)
+        {
+            if (!Ready || !RewardedAvailable || AdShowing) { done?.Invoke(false); return; }
+            StartAd("rewarded", placement, done);
+        }
+
+        private static void StartAd(string type, string placement, Action<bool> done)
+        {
+            AdShowing = true;
+            pendingRewarded = type == "rewarded";
+            pendingDone = done;
+            pendingId = nextAdId++;
+            ApplyAudio();
+#if UNITY_WEBGL && !UNITY_EDITOR
+            try { KPP_ShowAd(pendingId, type, placement ?? ""); }
+            catch (Exception e) { Debug.LogWarning("[Platform] " + e.Message); FinishAd(false); }
+#else
+            Runner.Get().StartCoroutine(FakeAd(type, placement, pendingId));
+#endif
+        }
+
+        private static IEnumerator FakeAd(string type, string placement, int id)
+        {
+            Debug.Log($"[Platform] (Editor) Simulando anuncio {type} «{placement}» en {Current}…");
+            yield return new WaitForSecondsRealtime(1f);
+            if (id == pendingId) FinishAd(true);
+        }
+
+        private static void FinishAd(bool ok)
+        {
+            if (!AdShowing) return;
+            AdShowing = false;
+            lastAdTime = Time.realtimeSinceStartup;
+            ApplyAudio();
+            var cb = pendingDone; pendingDone = null;
+            pendingId = 0;
+            cb?.Invoke(ok);   // en un bonificado, ok = visto entero; en un intersticial da igual
+        }
+
+        private static void ApplyAudio() => AudioListener.pause = AdShowing || platformMuted;
+
+        // Para las corrutinas del modo simulado del Editor
+        private class Runner : MonoBehaviour
+        {
+            private static Runner instance;
+            public static Runner Get()
+            {
+                if (instance != null) return instance;
+                var go = new GameObject("KovusPridePlatform");
+                UnityEngine.Object.DontDestroyOnLoad(go);
+                instance = go.AddComponent<Runner>();
+                return instance;
+            }
+        }
+    }
+}
