@@ -4,7 +4,8 @@ using UnityEngine;
 
 namespace Colorify
 {
-    // Guardado local (PlayerPrefs; en la web, IndexedDB del navegador). Sin cuentas ni nube.
+    // Guardado local por StorePlatform: PlayerPrefs (en la web, IndexedDB del navegador) o, en Playgama, el
+    // almacenamiento de su SDK, que es lo que exige. Sin cuentas ni nube propias.
     // Candidato a KovusPride.Save cuando exista el módulo.
     [Serializable]
     public class RunRecord
@@ -45,7 +46,7 @@ namespace Colorify
         {
             try
             {
-                string json = PlayerPrefs.GetString(Key, "");
+                string json = KovusPride.Publishing.StorePlatform.LoadString(Key, "");
                 if (!string.IsNullOrEmpty(json)) return JsonUtility.FromJson<SaveData>(json) ?? new SaveData();
             }
             catch (Exception e) { Debug.LogWarning("[Colorify] Guardado ilegible, se empieza de cero: " + e.Message); }
@@ -54,8 +55,7 @@ namespace Colorify
 
         public void Save()
         {
-            PlayerPrefs.SetString(Key, JsonUtility.ToJson(this));
-            PlayerPrefs.Save();
+            KovusPride.Publishing.StorePlatform.SaveString(Key, JsonUtility.ToJson(this));
         }
 
         // Devuelve la posición en el top local (0 = mejor) o -1 si no entra

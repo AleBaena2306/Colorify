@@ -32,6 +32,27 @@ var KovusPridePlatformLib = {
     } catch (e) { console.warn('[KPPlatform] showAd', e); }
     if (K.emit) K.emit(2, { id: id, ok: 0 });
   },
+
+  // Guardado de la plataforma (Playgama). Devuelve null si no hay valor o la plataforma no guarda.
+  KPP_StorageGet: function (keyPtr) {
+    var v = null;
+    try { if (window.KPPlatform && window.KPPlatform.storageGet) v = window.KPPlatform.storageGet(UTF8ToString(keyPtr)); }
+    catch (e) { console.warn('[KPPlatform] storageGet', e); }
+    if (v === null || v === undefined) return 0;
+    var n = lengthBytesUTF8(v) + 1, p = _malloc(n);
+    stringToUTF8(v, p, n);
+    return p;
+  },
+
+  KPP_StorageSet: function (keyPtr, valuePtr) {
+    try { if (window.KPPlatform && window.KPPlatform.storageSet) window.KPPlatform.storageSet(UTF8ToString(keyPtr), UTF8ToString(valuePtr)); }
+    catch (e) { console.warn('[KPPlatform] storageSet', e); }
+  },
+
+  KPP_SetScore: function (boardPtr, score) {
+    try { if (window.KPPlatform && window.KPPlatform.setScore) window.KPPlatform.setScore(UTF8ToString(boardPtr), score); }
+    catch (e) { }
+  },
 };
 
 mergeInto(LibraryManager.library, KovusPridePlatformLib);

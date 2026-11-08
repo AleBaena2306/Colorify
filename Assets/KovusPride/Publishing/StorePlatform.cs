@@ -19,10 +19,13 @@ namespace KovusPride.Publishing
     //   StorePlatform.Happytime()               en un logro grande (récord), con moderación
     //   StorePlatform.ShowInterstitial(...)     en una pausa natural (fin de partida); la capa decide si toca
     //   StorePlatform.ShowRewarded(...)         solo cuando el jugador lo pide (continuar, etc.)
+    //   StorePlatform.LoadString / SaveString   guardado (Playgama exige su almacenamiento; el resto, PlayerPrefs)
+    //   StorePlatform.SubmitScore(board, n)     puntuación para la clasificación de la plataforma, si la tiene
     // Reglas que se cumplen aquí dentro, en todas las plataformas, para que ningún juego las pueda romper:
     //   · Nunca un intersticial durante la partida.
-    //   · Entre intersticiales, como mínimo InterstitialMinSeconds (CrazyGames corta a los 3 minutos).
-    //   · Ninguno en los primeros FirstInterstitialSeconds de la sesión.
+    //   · Entre intersticiales, como mínimo InterstitialMinSeconds (CrazyGames corta a los 3 minutos), y ninguno en
+    //     los primeros FirstInterstitialSeconds. En Playgama no: su SDK decide la frecuencia y prohíbe temporizadores
+    //     propios, así que allí se le pide uno en cada pausa natural.
     //   · Mientras hay un anuncio, el audio está en pausa.
     //   · Sin SDK o sin anuncios (CrazyGames en Basic Launch, itch.io, bloqueadores), todo responde «no» y el
     //     juego sigue igual, sin esperas.
@@ -57,6 +60,19 @@ namespace KovusPride.Publishing
         // Enlaces que abren otras webs (privacidad, portfolio): los portales los suelen rechazar
         public static bool AllowsExternalLinks => Current == Store.Portfolio || Current == Store.Itch;
 
+        // Servidor propio (modos online, rankings propios). Playgama exige que todo vaya dentro del juego y además
+        // reparte el juego a webs que bloquean las conexiones externas: allí, de momento, nada de servidor propio.
+        public static bool AllowsOwnServer => Current != Store.Playgama;
+
+        // Tecla Esc: en los portales el navegador la reserva para salir de pantalla completa (Playgama 1.5.2)
+        public static bool AllowsEscapeKey => !IsPortal;
+
+        // El SDK de la plataforma regula los intersticiales (frecuencia y primer anuncio)
+        public static bool PlatformPacesAds => Current == Store.Playgama;
+
+        // Idioma que da la plataforma (ISO 639-1, p. ej. «es»); vacío si no lo da
+        public static string Language { get; private set; } = "";
+
         public static float InterstitialMinSeconds = 180f;
         public static float FirstInterstitialSeconds = 90f;
 
@@ -71,7 +87,7 @@ namespace KovusPride.Publishing
         public static event Action<bool> MuteRequested;    // la plataforma pide silenciar (true) o no (false)
         public static event Action OnReady;
 
-        private static bool initialized, gameReadySent, platformMuted;
+        private static bool initialized, gameReadySent, platformMuted, platformPaused;
         private static float lastAdTime = -9999f, sessionStart;
         private static int nextAdId = 1, pendingId;
         private static Action<bool> pendingDone;
@@ -82,6 +98,9 @@ namespace KovusPride.Publishing
         [DllImport("__Internal")] private static extern void KPP_Init(EventCallback cb);
         [DllImport("__Internal")] private static extern void KPP_Message(string name);
         [DllImport("__Internal")] private static extern void KPP_ShowAd(int id, string type, string placement);
+        [DllImport("__Internal")] private static extern string KPP_StorageGet(string key);
+        [DllImport("__Internal")] private static extern void KPP_StorageSet(string key, string value);
+        [DllImport("__Internal")] private static extern void KPP_SetScore(string board, double score);
 
         [MonoPInvokeCallback(typeof(EventCallback))]
         private static void OnJsEvent(int kind, IntPtr json)
@@ -92,7 +111,7 @@ namespace KovusPride.Publishing
 #endif
 
         // Mensajes de window.KPPlatform: 1 listo, 2 fin de anuncio, 3 pausa, 4 silencio, 5 empieza un anuncio
-        [Serializable] private class JsEvent { public string store; public int ads, rewarded, id, ok, on; public string user; }
+        [Serializable] private class JsEvent { public string store; public int ads, rewarded, id, ok, on; public string user, lang; }
 
         private static void HandleEvent(int kind, string json)
         {
@@ -104,6 +123,7 @@ namespace KovusPride.Publishing
                     InterstitialAvailable = e.ads == 1;
                     RewardedAvailable = e.rewarded == 1;
                     PlayerName = string.IsNullOrEmpty(e.user) ? "" : e.user;
+                    Language = string.IsNullOrEmpty(e.lang) ? "" : e.lang;
                     Debug.Log($"[Platform] {Current} listo · intersticiales {InterstitialAvailable} · bonificados {RewardedAvailable}" +
                               (PlayerName != "" ? $" · jugador {PlayerName}" : ""));
                     OnReady?.Invoke();
@@ -112,7 +132,9 @@ namespace KovusPride.Publishing
                     if (e.id == pendingId) FinishAd(e.ok == 1);
                     break;
                 case 3:
-                    PauseRequested?.Invoke(e.on == 1);
+                    platformPaused = e.on == 1;
+                    ApplyAudio();
+                    PauseRequested?.Invoke(platformPaused);
                     break;
                 case 4:
                     platformMuted = e.on == 1;
@@ -182,8 +204,9 @@ namespace KovusPride.Publishing
         // ¿Se podría enseñar un intersticial ahora mismo? (para no ofrecer nada que luego no salga)
         public static bool CanShowInterstitial =>
             Ready && InterstitialAvailable && !AdShowing && !GameplayActive &&
-            Time.realtimeSinceStartup - sessionStart >= FirstInterstitialSeconds &&
-            Time.realtimeSinceStartup - lastAdTime >= InterstitialMinSeconds;
+            (PlatformPacesAds ||
+             (Time.realtimeSinceStartup - sessionStart >= FirstInterstitialSeconds &&
+              Time.realtimeSinceStartup - lastAdTime >= InterstitialMinSeconds));
 
         // done siempre se llama (también si no toca anuncio), así el juego puede seguir en el mismo sitio
         public static void ShowInterstitial(string placement, Action done)
@@ -232,7 +255,49 @@ namespace KovusPride.Publishing
             cb?.Invoke(ok);   // en un bonificado, ok = visto entero; en un intersticial da igual
         }
 
-        private static void ApplyAudio() => AudioListener.pause = AdShowing || platformMuted;
+        private static void ApplyAudio() => AudioListener.pause = AdShowing || platformMuted || platformPaused;
+
+        // ---------------- Guardado ----------------
+        // Playgama: bridge.storage (leído antes de arrancar Unity, ver kp-platform.js). Resto: PlayerPrefs.
+        private static bool UsesPlatformStorage => Current == Store.Playgama;
+
+        public static string LoadString(string key, string fallback = "")
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (UsesPlatformStorage)
+            {
+                try { return KPP_StorageGet(key) ?? fallback; }
+                catch (Exception e) { Debug.LogWarning("[Platform] " + e.Message); return fallback; }
+            }
+#endif
+            return PlayerPrefs.GetString(key, fallback);
+        }
+
+        // Llamar solo cuando cambia algo que importa (fin de partida, ajustes): Playgama lo exige así
+        public static void SaveString(string key, string value)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (UsesPlatformStorage)
+            {
+                try { KPP_StorageSet(key, value ?? ""); }
+                catch (Exception e) { Debug.LogWarning("[Platform] " + e.Message); }
+                return;
+            }
+#endif
+            PlayerPrefs.SetString(key, value ?? "");
+            PlayerPrefs.Save();
+        }
+
+        // ---------------- Clasificación ----------------
+        public static void SubmitScore(string board, double score)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (!IsPortal) return;
+            try { KPP_SetScore(board, score); } catch (Exception) { }
+#else
+            if (Application.isEditor && IsPortal) Debug.Log($"[Platform] Puntuación {board}: {score}");
+#endif
+        }
 
         // Para las corrutinas del modo simulado del Editor
         private class Runner : MonoBehaviour

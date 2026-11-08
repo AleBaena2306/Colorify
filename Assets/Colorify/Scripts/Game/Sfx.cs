@@ -3,9 +3,8 @@ using UnityEngine;
 
 namespace Colorify
 {
-    // Efectos de sonido sintetizados al arrancar: cero archivos y cero descarga extra en la web.
-    // Son provisionales: se sustituyen (o se mezclan) con los de Kenney cuando se elijan, asignando
-    // clips en el Inspector del objeto «Sfx» (los campos vacíos usan el sintetizado).
+    // Efectos de sonido: archivos ogg de Kenney (CC0) en Resources/Audio/sfx_<id>.ogg. Playgama rechaza el sonido
+    // sintetizado por código, así que la síntesis solo queda como reserva si faltara algún archivo.
     public class Sfx : MonoBehaviour
     {
         public enum Id { Hit, HitWarm, Wrong, Tick, Go, Clear, Lose, Card, Click, Victory }
@@ -46,6 +45,14 @@ namespace Colorify
             clips[(int)Id.Card] = Make("card", 0.07f, t => (Noise() * 0.3f + Sine(t, 760f)) * Env(t, 0.07f) * 0.4f);
             clips[(int)Id.Click] = Make("click", 0.035f, t => Sine(t, 980f) * Env(t, 0.035f) * 0.35f);
             clips[(int)Id.Victory] = Make("victory", 0.75f, t => Arp(t, new[] { 523f, 659f, 784f, 1046f, 1318f, 1568f }, 0.11f) * 0.5f);
+
+            // Archivos reales (sustituyen a los sintetizados)
+            foreach (Id id in Enum.GetValues(typeof(Id)))
+            {
+                var clip = Resources.Load<AudioClip>("Audio/sfx_" + id.ToString().ToLowerInvariant());
+                if (clip != null) clips[(int)id] = clip;
+                else Debug.LogWarning("[Colorify] Falta Resources/Audio/sfx_" + id.ToString().ToLowerInvariant() + ".ogg; se usa el sintetizado");
+            }
         }
 
         public void Play(Id id, float pitch = 1f, float volume = 1f)

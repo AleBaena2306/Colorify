@@ -34,6 +34,9 @@ public static class KovusPridePublish
         public string itchTarget = "";               // usuario/juego:html5, p. ej. alebaena/colorify:html5
         public string butlerPath = "";               // vacío = buscar «butler» en el PATH
         public float interstitialMinSeconds = 180f;
+        // Claves de guardado que el juego usa con StorePlatform.LoadString/SaveString. En Playgama se leen con su SDK
+        // antes de arrancar Unity (lo exige: el estado del jugador se restaura antes de enseñar el juego).
+        public string[] storageKeys = new string[0];
     }
 
     private class Profile
@@ -45,6 +48,7 @@ public static class KovusPridePublish
         public bool decompressionFallback = true;    // funciona aunque el servidor no envíe Content-Encoding
         public long maxTotalBytes = 250L << 20, maxInitialBytes = 50L << 20, warnInitialBytes = 20L << 20;
         public int maxFiles = 1500;
+        public bool dataCaching = true;              // caché de la build en IndexedDB del navegador
     }
 
     private static readonly string ProjectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
@@ -70,8 +74,12 @@ public static class KovusPridePublish
                 {
                     store = store, name = "Playgama", define = "KP_STORE_PLAYGAMA", folder = "playgama",
                     uploadUrl = "https://developer.playgama.com/",
-                    head = "<script src=\"https://bridge.playgama.com/v1/stable/playgama-bridge.js\"></script>\n  <script>window.KP_STORE = 'playgama';</script>",
-                    notes = "Claude puede subir el zip con el servidor MCP de Playgama (start_archive_upload → confirm_archive_upload).",
+                    // El SDK tiene que ser el primer script del <head>, cargado normal (ni async ni desde código)
+                    head = "<script src=\"https://bridge.playgama.com/v2/stable/playgama-bridge.js\"></script>\n  <script>window.KP_STORE = 'playgama';</script>",
+                    // Playgama prohíbe guardar fuera de su SDK (IndexedDB incluido): sin caché de la build
+                    dataCaching = false,
+                    maxTotalBytes = 300L << 20,
+                    notes = "Claude sube el zip con el servidor MCP de Playgama (start_archive_upload → confirm_archive_upload) y lo publica en la sandbox.",
                 };
             case Store.GameDistribution:
                 string id = (s.gameDistributionGameId ?? "").Trim().Replace("'", "");
@@ -133,7 +141,7 @@ public static class KovusPridePublish
             PlayerSettings.WebGL.template = TemplateName;
             PlayerSettings.WebGL.compressionFormat = p.compression;
             PlayerSettings.WebGL.decompressionFallback = p.decompressionFallback;
-            PlayerSettings.WebGL.dataCaching = true;
+            PlayerSettings.WebGL.dataCaching = p.dataCaching;
             PlayerSettings.WebGL.nameFilesAsHashes = false;
             PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, Il2CppCodeGeneration.OptimizeSize);
             EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.DXT;
@@ -164,11 +172,17 @@ public static class KovusPridePublish
         string index = Path.Combine(outDir, "index.html");
         string html = File.ReadAllText(index);
         if (!html.Contains("<!-- KP_STORE_HEAD -->")) { Fail(title, "El index.html no viene de la plantilla KovusPridePortal."); return false; }
-        File.WriteAllText(index, html.Replace("<!-- KP_STORE_HEAD -->", p.head), new UTF8Encoding(false));
+        string keys = string.Join(", ", (settings.storageKeys ?? new string[0])
+            .Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => "'" + k.Trim().Replace("'", "") + "'"));
+        string head = p.head + "\n  <script>window.KP_STORAGE_KEYS = [" + keys + "];</script>";
+        html = html.Replace("<!-- KP_STORE_HEAD -->", head);
+        File.WriteAllText(index, html, new UTF8Encoding(false));
         File.Copy(AdapterPath, Path.Combine(outDir, "kp-platform.js"), true);
         if (store == Store.Playgama)
+            // Sin minimumDelayBetweenInterstitial: Playgama pide dejar los valores por defecto de cada plataforma.
+            // La clasificación «best» la usan las plataformas de Playgama que la tienen (MSN, YouTube, Lagged…).
             File.WriteAllText(Path.Combine(outDir, "playgama-bridge-config.json"),
-                "{\n  \"advertisement\": {\n    \"interstitial\": { \"minimumDelay\": " + Mathf.RoundToInt(settings.interstitialMinSeconds) + " }\n  }\n}\n",
+                "{\n  \"leaderboards\": [\n    { \"id\": \"best\", \"isMain\": true }\n  ]\n}\n",
                 new UTF8Encoding(false));
 
         // Comprobaciones
@@ -185,6 +199,20 @@ public static class KovusPridePublish
         foreach (var src in new[] { "src=\"/", "href=\"/", "url(/" })
             if (final.Contains(src)) problems.Add($"Ruta absoluta en index.html ({src}…): deben ser relativas.");
         if (!Directory.Exists(Path.Combine(outDir, "Build"))) problems.Add("No hay carpeta Build/.");
+        if (store == Store.Playgama)
+        {
+            // Requisitos de Playgama que se pueden comprobar sobre la build (wiki: Required steps y 1.3, 5.1)
+            int firstScript = final.IndexOf("<script", StringComparison.OrdinalIgnoreCase);
+            int tagEnd = firstScript < 0 ? -1 : final.IndexOf('>', firstScript);
+            if (tagEnd < 0 || !final.Substring(firstScript, tagEnd - firstScript).Contains("playgama-bridge.js"))
+                problems.Add("El SDK de Playgama no es el primer script del <head>.");
+            if (!File.Exists(Path.Combine(outDir, "playgama-bridge-config.json"))) problems.Add("Falta playgama-bridge-config.json junto al index.html.");
+            if (!p.decompressionFallback) problems.Add("Playgama exige Decompression Fallback (5.1.1).");
+            if (files.Any(f => Path.GetRelativePath(outDir, f).Any(ch => ch > 127)))
+                problems.Add("Hay nombres de archivo con caracteres no latinos (1.3.2).");
+            if ((settings.storageKeys ?? new string[0]).Length == 0)
+                warnings.Add("publish.json no tiene storageKeys: en Playgama el guardado no se leerá al arrancar.");
+        }
 
         if (problems.Count > 0)
         {

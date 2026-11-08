@@ -3,5 +3,8 @@
     "gameDistributionGameId": "",
     "itchTarget": "alebaena/colorify:html5",
     "butlerPath": "",
-    "interstitialMinSeconds": 180.0
+    "interstitialMinSeconds": 180.0,
+    "storageKeys": [
+        "colorify.save.v1"
+    ]
 }

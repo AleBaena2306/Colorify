@@ -613,7 +613,7 @@ namespace Colorify
         // Envía la puntuación al ranking global (Normal y Supervivencia). Sin conexión, simplemente no se envía.
         private void SubmitOnline(string m, long score, string info, List<int> samples, List<int> misses, int playMs = 0, string end = null)
         {
-            if (!cfg.submitScoresOnline || score <= 0) return;
+            if (!OnlineEnabled || score <= 0) return;
             EnsureIdentity();
             var s = samples != null && samples.Count >= 6 ? new List<int>(samples) : null;
             StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, CurrentName, m, score, info, s, s != null ? misses : null, r =>

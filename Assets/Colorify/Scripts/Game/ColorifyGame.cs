@@ -19,6 +19,7 @@ namespace Colorify
         private ColorifyView v;
         private Juice juice;
         private Sfx sfx;
+        private Music music;
         private Ads ads;
         private SaveData save;
         private readonly System.Random rng = new System.Random();
@@ -63,6 +64,8 @@ namespace Colorify
             juice = gameObject.AddComponent<Juice>();
             juice.Init(v.fx);
             sfx = Sfx.Create(transform);
+            music = Music.Create(transform);
+            music.SetOn(save.soundOn);
             ads = Ads.Create(transform);
             foreach (var t in v.tiles) t.onPress = OnTilePressed;
 
@@ -79,11 +82,14 @@ namespace Colorify
             StartCoroutine(LoadTuning());
         }
 
+        // Servidor propio (rankings, online, ritmo aprendido): no en las plataformas que no lo permiten (Playgama)
+        private bool OnlineEnabled => cfg.submitScoresOnline && StorePlatform.AllowsOwnServer;
+
         // Lo que el servidor ha aprendido de las partidas (ritmo y dificultad de cada especial). Sin conexión,
         // el juego usa valores de referencia.
         private IEnumerator LoadTuning()
         {
-            if (!cfg.submitScoresOnline) yield break;
+            if (!OnlineEnabled) yield break;
             yield return Online.OnlineApi.GetTuning(cfg, r =>
             {
                 if (r == null || !r.ok) return;
@@ -118,6 +124,13 @@ namespace Colorify
             var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
             UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(215, -430));
             v.menuSoundLabel = sound.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            if (!StorePlatform.AllowsOwnServer)
+            {
+                // Sin servidor propio: ni Online ni Ranking; el botón de sonido pasa al centro
+                onlineBtn.gameObject.SetActive(false);
+                best.gameObject.SetActive(false);
+                UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(0, -200));
+            }
 
             // --- Pausa ---
             v.pause = v.Overlay("Pause");
@@ -1180,6 +1193,7 @@ namespace Colorify
                 save.normalRunsPlayed++;
                 if (normal.hits > save.bestNormalHits) save.bestNormalHits = normal.hits;
                 if (normal.points > save.bestNormalPoints) save.bestNormalPoints = normal.points;
+                StorePlatform.SubmitScore("best", save.bestNormalPoints);   // clasificación de la plataforma, si la tiene
                 save.runsSinceContinueOffer = continueOffered ? 0 : save.runsSinceContinueOffer + 1;
                 save.Save();
                 Analytics.Log("game_end", ("mode", "normal"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
@@ -1247,6 +1261,7 @@ namespace Colorify
         {
             save.soundOn = !save.soundOn;
             Sfx.Enabled = save.soundOn;
+            music.SetOn(save.soundOn);
             save.Save();
             sfx.Play(Sfx.Id.Click);
             RefreshToggles();
@@ -1274,16 +1289,18 @@ namespace Colorify
         private void OnApplicationPause(bool paused) { if (paused) Pause(); }
 
         // =====================================================================
-        // Teclado (ordenador): Esc o P para pausar
+        // Teclado (ordenador): Esc o P para pausar (en los portales, solo P)
         // =====================================================================
 
+        // En los portales, Esc es del navegador (salir de pantalla completa): solo P
         private static bool PausePressed()
         {
+            bool esc = StorePlatform.AllowsEscapeKey;
 #if ENABLE_INPUT_SYSTEM
             var k = Keyboard.current;
-            return k != null && (k.escapeKey.wasPressedThisFrame || k.pKey.wasPressedThisFrame);
+            return k != null && ((esc && k.escapeKey.wasPressedThisFrame) || k.pKey.wasPressedThisFrame);
 #else
-            return Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P);
+            return (esc && Input.GetKeyDown(KeyCode.Escape)) || Input.GetKeyDown(KeyCode.P);
 #endif
         }
 
