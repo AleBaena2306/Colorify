@@ -26,3 +26,7 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
   unión, InviteLink, isInstantMultiplayer, mantener amigos en la sala). Integrado: StorePlatform.UpdateRoom/LeftRoom en
   duelos privados y carreras, invitaciones (inviteParams y addJoinRoomListener → JoinFromInvite), entrada directa a una
   sala privada de carrera con isInstantMultiplayer y el nombre de la cuenta de CrazyGames en el juego.
+- Al subir como juego Unity: «Cannot find Build directory» y, sobre todo, CrazyGames IGNORA el index.html de los juegos
+  Unity (docs: Unity export tips) — se perderían el SDK HTML5 y kp-platform.js. Solución: subirlo como juego HTML5 (su
+  propia documentación lo recomienda si el juego usa JavaScript propio), con Decompression Fallback (archivos .unityweb,
+  porque como HTML5 no se garantiza el Content-Encoding). Se deshace el cambio anterior de quitar el fallback.
