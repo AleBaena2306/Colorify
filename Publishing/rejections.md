@@ -14,3 +14,9 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
 - Servidor propio: fuera en Playgama (1.2.5) → StorePlatform.AllowsOwnServer.
 - Subida por MCP: las URLs de subida (S3 de Playgama) están bloqueadas desde el entorno de Claude; hasta que se permita
   ese dominio, el zip y las portadas se suben a mano en la consola.
+
+## 10/11/2026 · CrazyGames · subida
+- «Archive files are not supported»: el portal no acepta zip; hay que arrastrar los archivos de la carpeta web. La
+  herramienta ahora abre esa carpeta y lo indica (Profile.uploadFolder).
+- Aviso «Compression could not be detected automatically»: es por usar Brotli con Decompression Fallback (archivos
+  .unityweb). Es un aviso, no un error. Recomiendan su «custom build» (CrazySDK de Unity); no es obligatoria.

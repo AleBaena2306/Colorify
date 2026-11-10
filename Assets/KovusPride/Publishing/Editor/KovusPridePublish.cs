@@ -57,6 +57,7 @@ public static class KovusPridePublish
         public long maxTotalBytes = 250L << 20, maxInitialBytes = 50L << 20, warnInitialBytes = 20L << 20;
         public int maxFiles = 1500;
         public bool dataCaching = true;              // caché de la build en IndexedDB del navegador
+        public bool uploadFolder;                    // el portal pide los archivos sueltos, no el zip (CrazyGames)
     }
 
     private static readonly string ProjectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
@@ -75,7 +76,8 @@ public static class KovusPridePublish
                     store = store, name = "CrazyGames", define = "KP_STORE_CRAZYGAMES", folder = "crazygames",
                     uploadUrl = "https://developer.crazygames.com/",
                     head = "<script src=\"https://sdk.crazygames.com/crazygames-sdk-v3.js\"></script>\n  <script>window.KP_STORE = 'crazygames';</script>",
-                    notes = "Basic Launch: sin anuncios (el SDK los desactiva) y sin inicio de sesión externo. Sube todos los archivos de la carpeta (o el zip).",
+                    notes = "CrazyGames no acepta el zip: arrastre a «Upload files» todo lo que hay dentro de la carpeta web (index.html, kp-platform.js y la carpeta Build). Basic Launch: sin anuncios y sin inicio de sesión externo.",
+                    uploadFolder = true,
                 };
             case Store.Playgama:
                 return new Profile
@@ -309,9 +311,10 @@ public static class KovusPridePublish
             Debug.LogWarning("[Publish] No encuentro butler. Instálalo desde https://itchio.itch.io/butler y ejecuta «butler login» una vez.");
         }
 
-        EditorUtility.RevealInFinder(zipPath);
+        string show = p.uploadFolder ? Path.Combine(outDir, "index.html") : zipPath;
+        EditorUtility.RevealInFinder(show);
         if (ask && EditorUtility.DisplayDialog($"{p.name} · lista para subir",
-                $"Zip preparado:\n{zipPath}\n\n{p.notes}\n\n¿Abrir el portal de {p.name}?", "Abrir", "Cerrar"))
+                $"{(p.uploadFolder ? "Archivos preparados en:\n" + outDir : "Zip preparado:\n" + zipPath)}\n\n{p.notes}\n\n¿Abrir el portal de {p.name}?", "Abrir", "Cerrar"))
             Application.OpenURL(p.uploadUrl);
     }
 
