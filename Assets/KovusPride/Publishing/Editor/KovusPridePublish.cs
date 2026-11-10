@@ -16,7 +16,7 @@ using Debug = UnityEngine.Debug;
 //   1. Comprueba que los scripts están compilados y que la plataforma es Web (si no, ofrece cambiarla).
 //   2. Compila con la plantilla KovusPridePortal y el símbolo KP_STORE_<PLATAFORMA> (solo para esa build; no cambia
 //      los ajustes del proyecto ni obliga a recompilar el Editor).
-//   3. Añade el SDK de la plataforma al index.html y copia kp-platform.js (y la configuración de Playgama).
+//   3. Añade el SDK de la plataforma al index.html y mete dentro el adaptador kp-platform.js (y la configuración de Playgama).
 //   4. Comprueba los requisitos de la plataforma (tamaño, número de archivos, descarga inicial, rutas relativas).
 //      Si algo incumple un requisito obligatorio, no genera el zip.
 //   5. Genera el zip en <proyecto>/Builds/Publish/<plataforma>/ y apunta el resultado en Publishing/history.md.
@@ -76,7 +76,7 @@ public static class KovusPridePublish
                     store = store, name = "CrazyGames", define = "KP_STORE_CRAZYGAMES", folder = "crazygames",
                     uploadUrl = "https://developer.crazygames.com/",
                     head = "<script src=\"https://sdk.crazygames.com/crazygames-sdk-v3.js\"></script>\n  <script>window.KP_STORE = 'crazygames';</script>",
-                    notes = "En el formulario, súbalo como juego HTML5 (no Unity): con Unity, CrazyGames ignora nuestro index.html y se perdería el adaptador del SDK. No acepta el zip: arrastre index.html, kp-platform.js y la carpeta Build. Basic Launch: sin anuncios y sin inicio de sesión externo.",
+                    notes = "En el formulario, súbalo como juego HTML5 (no Unity): con Unity, CrazyGames ignora nuestro index.html y se perdería el adaptador del SDK. No acepta el zip: arrastre index.html y la carpeta Build. Basic Launch: sin anuncios y sin inicio de sesión externo.",
                     uploadFolder = true,
                 };
             case Store.Playgama:
@@ -192,8 +192,12 @@ public static class KovusPridePublish
             .Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => "'" + k.Trim().Replace("'", "") + "'"));
         string head = p.head + "\n  <script>window.KP_STORAGE_KEYS = [" + keys + "];</script>\n  " + OptionsScript(store, settings);
         html = html.Replace("<!-- KP_STORE_HEAD -->", head);
+        // El adaptador va dentro del index.html: un archivo menos que el portal pueda perder (CrazyGames devolvió 404
+        // con kp-platform.js como archivo aparte)
+        string adapter = File.ReadAllText(AdapterPath).Replace("</script", "<\\/script");
+        if (!html.Contains("<script src=\"kp-platform.js\"></script>")) { Fail(title, "La plantilla no carga kp-platform.js."); return false; }
+        html = html.Replace("<script src=\"kp-platform.js\"></script>", "<script>\n" + adapter + "\n</script>");
         File.WriteAllText(index, html, new UTF8Encoding(false));
-        File.Copy(AdapterPath, Path.Combine(outDir, "kp-platform.js"), true);
         if (store == Store.Playgama)
             // Sin minimumDelayBetweenInterstitial: Playgama pide dejar los valores por defecto de cada plataforma.
             // La clasificación «best» la usan las plataformas de Playgama que la tienen (MSN, YouTube, Lagged…).

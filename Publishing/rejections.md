@@ -30,3 +30,5 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
   Unity (docs: Unity export tips) — se perderían el SDK HTML5 y kp-platform.js. Solución: subirlo como juego HTML5 (su
   propia documentación lo recomienda si el juego usa JavaScript propio), con Decompression Fallback (archivos .unityweb,
   porque como HTML5 no se garantiza el Content-Encoding). Se deshace el cambio anterior de quitar el fallback.
+- Vista previa de CrazyGames: kp-platform.js devolvió 404 (el archivo suelto no llegó o no se sirvió) y el juego arrancó
+  sin SDK («intersticiales False»). Ahora el adaptador va dentro del index.html.
