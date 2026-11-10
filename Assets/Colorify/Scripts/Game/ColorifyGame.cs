@@ -190,7 +190,7 @@ namespace Colorify
             UIKit.Place(v.overInfo.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 280));
             v.overCardsRow = UIKit.Rect("Cards", v.gameOver.transform);
             UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
-            v.overContinue = UIKit.Button("Continue", v.gameOver.transform, "WATCH AD · ONE MORE TRY", ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
+            v.overContinue = UIKit.Button("Continue", v.gameOver.transform, ContinueLabel, ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
             UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(820, 150), new Vector2(0, 10));
             // En los portales, al salir de la pantalla de fin de partida puede tocar un intersticial (la capa de
             // publicación decide: nunca en partida, como mucho uno cada 3 minutos)
@@ -1135,12 +1135,12 @@ namespace Colorify
         {
             if (state == State.GameOver && normal != null && !normal.continueUsed) { ContinueNormal(); return; }
             if (state != State.GameOver || run == null || run.continueUsed) return;
-            v.overContinue.interactable = false;
+            SetContinueLabel("LOADING AD...", false);
             ads.ShowRewarded("continue", rewarded =>
             {
-                v.overContinue.interactable = true;
                 Analytics.Log("continue_offer", ("accepted", true), ("rewarded", rewarded), ("stage", run.stage));
-                if (!rewarded) { v.overContinue.gameObject.SetActive(false); return; }
+                if (!rewarded) { ContinueFailed(); return; }
+                SetContinueLabel(ContinueLabel, true);
                 run.continueUsed = true;
                 Hide(v.gameOver);
                 // Se repite la ronda con el tiempo completo y conservando los puntos ya hechos en ella
@@ -1155,15 +1155,40 @@ namespace Colorify
             });
         }
 
+        // Botón de continuar con anuncio: mientras carga lo dice, y si no hay anuncio (bloqueador, sin inventario,
+        // anuncio cancelado) avisa un momento en vez de desaparecer sin más
+        private const string ContinueLabel = "WATCH AD · ONE MORE TRY";
+
+        private void SetContinueLabel(string text, bool interactable)
+        {
+            var label = v.overContinue.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            if (label != null) label.text = text;
+            v.overContinue.interactable = interactable;
+        }
+
+        private void ContinueFailed()
+        {
+            SetContinueLabel("NO AD AVAILABLE", false);
+            StartCoroutine(HideContinueSoon());
+        }
+
+        private System.Collections.IEnumerator HideContinueSoon()
+        {
+            yield return new WaitForSecondsRealtime(1.8f);
+            if (v.overContinue == null) yield break;
+            v.overContinue.gameObject.SetActive(false);
+            SetContinueLabel(ContinueLabel, true);
+        }
+
         // Modo Normal: el anuncio devuelve el tiempo inicial una vez por partida
         private void ContinueNormal()
         {
-            v.overContinue.interactable = false;
+            SetContinueLabel("LOADING AD...", false);
             ads.ShowRewarded("continue", rewarded =>
             {
-                v.overContinue.interactable = true;
                 Analytics.Log("continue_offer", ("accepted", true), ("rewarded", rewarded), ("mode", "normal"), ("hits", normal.hits));
-                if (!rewarded) { v.overContinue.gameObject.SetActive(false); return; }
+                if (!rewarded) { ContinueFailed(); return; }
+                SetContinueLabel(ContinueLabel, true);
                 normal.continueUsed = true;
                 Hide(v.gameOver);
                 timeLeft = Mathf.Min(normal.StartTime, normal.MaxTime);
