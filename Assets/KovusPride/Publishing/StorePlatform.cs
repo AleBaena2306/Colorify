@@ -64,6 +64,10 @@ namespace KovusPride.Publishing
         // reparte el juego a webs que bloquean las conexiones externas: allí, de momento, nada de servidor propio.
         public static bool AllowsOwnServer => Current != Store.Playgama;
 
+        // Multijugador con servidor propio (duelos y carreras por WebSocket). CrazyGames exige que el multijugador use
+        // su SDK (salas, enlaces de invitación, isInstantMultiplayer); hasta integrarlo, allí no se ofrece.
+        public static bool AllowsOwnMultiplayer => Current == Store.Portfolio || Current == Store.Itch || Current == Store.GameDistribution;
+
         // Tecla Esc: en los portales el navegador la reserva para salir de pantalla completa (Playgama 1.5.2)
         public static bool AllowsEscapeKey => !IsPortal;
 

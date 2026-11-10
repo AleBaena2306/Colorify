@@ -28,7 +28,7 @@ namespace Colorify
         {
             if (menuOnline == null) return;
             bool own = StorePlatform.AllowsOwnServer;
-            bool online = own || StorePlatform.MultiplayerAvailable;
+            bool online = (own && StorePlatform.AllowsOwnMultiplayer) || StorePlatform.MultiplayerAvailable;
             bool ranking = own || StorePlatform.HasInGameLeaderboard;
             menuOnline.gameObject.SetActive(online);
             menuRanking.gameObject.SetActive(ranking);
