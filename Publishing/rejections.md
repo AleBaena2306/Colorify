@@ -20,3 +20,5 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
   herramienta ahora abre esa carpeta y lo indica (Profile.uploadFolder).
 - Aviso «Compression could not be detected automatically»: es por usar Brotli con Decompression Fallback (archivos
   .unityweb). Es un aviso, no un error. Recomiendan su «custom build» (CrazySDK de Unity); no es obligatoria.
+- Rechazo al subir: «Found .unityweb files… build your game without the Decompression fallback option». CrazyGames
+  exige Brotli sin Decompression Fallback (archivos .br). Corregido en el perfil de CrazyGames.

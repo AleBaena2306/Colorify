@@ -78,6 +78,8 @@ public static class KovusPridePublish
                     head = "<script src=\"https://sdk.crazygames.com/crazygames-sdk-v3.js\"></script>\n  <script>window.KP_STORE = 'crazygames';</script>",
                     notes = "CrazyGames no acepta el zip: arrastre a «Upload files» todo lo que hay dentro de la carpeta web (index.html, kp-platform.js y la carpeta Build). Basic Launch: sin anuncios y sin inicio de sesión externo.",
                     uploadFolder = true,
+                    // CrazyGames sirve los .br con su Content-Encoding y rechaza los .unityweb del Decompression Fallback
+                    decompressionFallback = false,
                 };
             case Store.Playgama:
                 return new Profile
