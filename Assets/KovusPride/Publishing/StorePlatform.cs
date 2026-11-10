@@ -64,9 +64,9 @@ namespace KovusPride.Publishing
         // reparte el juego a webs que bloquean las conexiones externas: allí, de momento, nada de servidor propio.
         public static bool AllowsOwnServer => Current != Store.Playgama;
 
-        // Multijugador con servidor propio (duelos y carreras por WebSocket). CrazyGames exige que el multijugador use
-        // su SDK (salas, enlaces de invitación, isInstantMultiplayer); hasta integrarlo, allí no se ofrece.
-        public static bool AllowsOwnMultiplayer => Current == Store.Portfolio || Current == Store.Itch || Current == Store.GameDistribution;
+        // Multijugador con servidor propio (duelos y carreras por WebSocket). En CrazyGames, además, el juego le dice a
+        // su SDK en qué sala está cada jugador (UpdateRoom/LeftRoom) para amigos, invitaciones y entrada directa.
+        public static bool AllowsOwnMultiplayer => Current != Store.Playgama;
 
         // Tecla Esc: en los portales el navegador la reserva para salir de pantalla completa (Playgama 1.5.2)
         public static bool AllowsEscapeKey => !IsPortal;
@@ -119,7 +119,7 @@ namespace KovusPride.Publishing
         // 6 respuesta de una llamada (Call), 7 evento de la plataforma (PlatformEvent)
         [Serializable] private class JsEvent
         {
-            public string store; public int ads, rewarded, id, ok, on, mp; public string user, lang, lb, pid, data, name;
+            public string store; public int ads, rewarded, id, ok, on, mp, instant; public string user, lang, lb, pid, data, name, invite;
         }
 
         private static void HandleEvent(int kind, string json)
@@ -136,6 +136,8 @@ namespace KovusPride.Publishing
                     LeaderboardType = string.IsNullOrEmpty(e.lb) ? "" : e.lb;
                     MultiplayerAvailable = e.mp == 1;
                     PlayerId = string.IsNullOrEmpty(e.pid) ? "" : e.pid;
+                    IsInstantMultiplayer = e.instant == 1;
+                    InviteParamsJson = string.IsNullOrEmpty(e.invite) ? "" : e.invite;
                     Debug.Log($"[Platform] {Current} listo · intersticiales {InterstitialAvailable} · bonificados {RewardedAvailable}" +
                               (PlayerName != "" ? $" · jugador {PlayerName}" : ""));
                     OnReady?.Invoke();
@@ -313,6 +315,24 @@ namespace KovusPride.Publishing
         public static bool HasInGameLeaderboard => LeaderboardType == "in_game";
         public static bool MultiplayerAvailable { get; private set; }
         public static string PlayerId { get; private set; } = "";
+
+        // Salas de la plataforma cuando el juego usa su propio servidor (CrazyGames): la plataforma solo necesita saber
+        // en qué sala está el jugador para los amigos, las invitaciones y la entrada directa desde su página.
+        public static bool IsInstantMultiplayer { get; private set; }   // abrir directamente en una sala privada
+        public static string InviteParamsJson { get; private set; } = "";   // el juego se abrió desde una invitación
+        public static bool HasRoomPresence => Current == Store.CrazyGames;
+
+        public static void UpdateRoom(string roomId, bool joinable, string inviteParamsJson)
+        {
+            if (!HasRoomPresence) return;
+            Call("room.update", "{\"roomId\":\"" + (roomId ?? "").Replace("\"", "") + "\",\"isJoinable\":" + (joinable ? "true" : "false") +
+                                ",\"inviteParams\":" + (string.IsNullOrEmpty(inviteParamsJson) ? "{}" : inviteParamsJson) + "}", null);
+        }
+
+        public static void LeftRoom()
+        {
+            if (HasRoomPresence) Call("room.left", "{}", null);
+        }
 
         // Eventos de la plataforma (nombre, json): mp.joined, mp.left, mp.host, mp.message, mp.roomLeft
         public static event Action<string, string> PlatformEvent;

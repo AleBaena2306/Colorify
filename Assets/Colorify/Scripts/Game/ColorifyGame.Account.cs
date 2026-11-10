@@ -30,7 +30,20 @@ namespace Colorify
         private string sessionName;   // nombre escrito sin cuenta (solo esta sesión)
         private bool SignedIn => !string.IsNullOrEmpty(save.accountToken);
         private string CurrentName => SignedIn && !string.IsNullOrEmpty(save.accountName) ? save.accountName
-            : !string.IsNullOrEmpty(sessionName) ? sessionName : save.playerName;
+            : !string.IsNullOrEmpty(sessionName) ? sessionName : PlatformName ?? save.playerName;
+
+        // En los portales con cuenta (CrazyGames), el nombre de la cuenta: así los amigos se reconocen. Si el servidor
+        // no lo acepta (formato o nombre reservado), se vuelve al generado.
+        private bool platformNameRejected;
+        private string PlatformName
+        {
+            get
+            {
+                string n = KovusPride.Publishing.StorePlatform.PlayerName;
+                if (platformNameRejected || !KovusPride.Publishing.StorePlatform.IsPortal || string.IsNullOrEmpty(n)) return null;
+                return PlayerNames.Problem(n) == null ? n : null;
+            }
+        }
 
         private CanvasGroup nameEditor, signInWait;
         private TMPro.TMP_InputField nameInput;      // ordenador y Android
@@ -250,6 +263,7 @@ namespace Colorify
         private bool NameError(string code)
         {
             if (code != "bad_name" && code != "name_taken") return false;
+            if (sessionName == null && PlatformName != null) platformNameRejected = true;
             sessionName = null;
             CloseDuel();
             Hide(searching);

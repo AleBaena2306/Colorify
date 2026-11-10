@@ -12,7 +12,8 @@
 //   call(id, method, argsJson) llamada asíncrona: responde con emit(6, {id, ok, data}) — data es JSON en texto.
 //                              Métodos (Playgama): lb.entries {board} · mp.quick {max, filter} · mp.create {max}
 //                              mp.join {room} · mp.findJoin {filter} · mp.close · mp.leave · mp.send {type, data, to}
-//   Eventos de la plataforma: emit(7, {name, data}) — mp.joined, mp.left, mp.message, mp.roomLeft, mp.host
+//                              (CrazyGames) room.update {roomId, isJoinable, inviteParams} · room.left · room.inviteLink {params}
+//   Eventos de la plataforma: emit(7, {name, data}) — mp.joined, mp.left, mp.message, mp.roomLeft, mp.host, room.join
 // Si un SDK falla o no responde, el juego sigue: «listo» sin anuncios a los 8 s y anuncios que caducan a los 60 s.
 (function () {
   'use strict';
@@ -28,7 +29,8 @@
     ready = true;
     info = info || {};
     emit(1, { store: store, ads: info.ads ? 1 : 0, rewarded: info.rewarded ? 1 : 0, user: info.user || '',
-              lang: info.lang || info0.lang || '', lb: info.lb || '', mp: info.mp ? 1 : 0, pid: info.pid || '' });
+              lang: info.lang || info0.lang || '', lb: info.lb || '', mp: info.mp ? 1 : 0, pid: info.pid || '',
+              instant: info.instant ? 1 : 0, invite: info.invite || '' });
   }
 
   function reply(id, ok, data) {
@@ -83,7 +85,14 @@
           if (sdk.game && sdk.game.addSettingsChangeListener)
             sdk.game.addSettingsChangeListener(function (s) { emit(4, { on: s && s.muteAudio ? 1 : 0 }); });
         } catch (e) { }
-        var finish = function (user) { sendReady({ ads: ads, rewarded: ads, user: user && user.username }); };
+        // Multijugador de CrazyGames: el juego usa su propio servidor, y el SDK solo sabe en qué sala está cada uno
+        // (amigos, invitaciones y la entrada directa desde su página de multijugador)
+        var g = sdk.game || {};
+        var instant = false, invite = '';
+        try { instant = !!g.isInstantMultiplayer; } catch (e) { }
+        try { invite = g.inviteParams ? JSON.stringify(g.inviteParams) : ''; } catch (e) { }
+        try { if (g.addJoinRoomListener) g.addJoinRoomListener(function (params) { platformEvent('room.join', params || {}); }); } catch (e) { }
+        var finish = function (user) { sendReady({ ads: ads, rewarded: ads, user: user && user.username, instant: instant, invite: invite }); };
         try {
           if (sdk.user && sdk.user.isUserAccountAvailable) sdk.user.getUser().then(finish).catch(function () { finish(null); });
           else finish(null);
@@ -96,6 +105,26 @@
       else if (name === 'gameplay_stopped') sdk.game.gameplayStop();
       else if (name === 'loading_stopped' && sdk.game.loadingStop) sdk.game.loadingStop();
       else if (name === 'happytime' && sdk.game.happytime) sdk.game.happytime();
+    },
+    call: function (id, method, args) {
+      var sdk = cg.sdk(), g = sdk && sdk.game;
+      if (!g) { reply(id, false, { error: 'not_ready' }); return; }
+      try {
+        switch (method) {
+          case 'room.update':
+            g.updateRoom({ roomId: String(args.roomId || ''), isJoinable: !!args.isJoinable, inviteParams: args.inviteParams || {} });
+            reply(id, true, {});
+            return;
+          case 'room.left':
+            if (g.leftRoom) g.leftRoom();
+            reply(id, true, {});
+            return;
+          case 'room.inviteLink':
+            reply(id, true, { link: g.inviteLink(args.params || {}) || '' });
+            return;
+        }
+      } catch (e) { reply(id, false, { error: String(e && e.message || e) }); return; }
+      reply(id, false, { error: 'unknown_method' });
     },
     showAd: function (id, type) {
       var sdk = cg.sdk();

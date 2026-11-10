@@ -222,6 +222,7 @@ namespace Colorify
 
         private void LeaveRace()
         {
+            if (raceActive) KovusPride.Publishing.StorePlatform.LeftRoom();
             if (duel != null && raceActive) duel.SendRaw("{\"t\":\"leave\"}");
             raceActive = false;
             lastRoom = null;
@@ -283,6 +284,8 @@ namespace Colorify
                 case "room":
                     lastRoom = m;
                     raceActive = true;
+                    KovusPride.Publishing.StorePlatform.UpdateRoom("race-" + m.room, m.state == "lobby" && m.players.Count < m.max,
+                        "{\"mode\":\"race\",\"room\":\"" + m.room + "\"}");
                     foreach (var p in m.players) if (p.me) mySlot = p.slot;
                     if (m.state == "lobby" && mode != Mode.Race && !(raceFinal.gameObject.activeSelf && raceFinal.alpha > 0.5f)) ShowRoom(m);
                     break;

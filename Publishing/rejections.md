@@ -23,5 +23,6 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
 - Rechazo al subir: «Found .unityweb files… build your game without the Decompression fallback option». CrazyGames
   exige Brotli sin Decompression Fallback (archivos .br). Corregido en el perfil de CrazyGames.
 - Formulario: si se marca «online multiplayer», CrazyGames exige su SDK de multijugador (actualizar la sala, listener de
-  unión, InviteLink, isInstantMultiplayer, mantener amigos en la sala). Hasta integrarlo, el modo Online no sale en
-  CrazyGames (StorePlatform.AllowsOwnMultiplayer) y la casilla se deja sin marcar.
+  unión, InviteLink, isInstantMultiplayer, mantener amigos en la sala). Integrado: StorePlatform.UpdateRoom/LeftRoom en
+  duelos privados y carreras, invitaciones (inviteParams y addJoinRoomListener → JoinFromInvite), entrada directa a una
+  sala privada de carrera con isInstantMultiplayer y el nombre de la cuenta de CrazyGames en el juego.

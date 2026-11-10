@@ -215,6 +215,7 @@ namespace Colorify
 
         private void CloseDuel()
         {
+            if (duel != null) KovusPride.Publishing.StorePlatform.LeftRoom();
             if (duel != null) duel.Close();
             duel = null;
             inbox.Clear();
@@ -332,6 +333,63 @@ namespace Colorify
         }
 
         // =====================================================================
+        // Salas de la plataforma (CrazyGames): invitaciones y entrada directa
+        // =====================================================================
+
+        [System.Serializable] private class InviteInfo { public string mode, room; }
+
+        // Al arrancar: si se abrió desde una invitación, a esa sala; si CrazyGames lo abrió desde su página de
+        // multijugador (isInstantMultiplayer), directo a una sala privada de carrera lista para los amigos
+        private IEnumerator PlatformLaunch()
+        {
+            float until = Time.realtimeSinceStartup + 10f;
+            while (!KovusPride.Publishing.StorePlatform.Ready && Time.realtimeSinceStartup < until) yield return null;
+            yield return null;
+            if (!KovusPride.Publishing.StorePlatform.HasRoomPresence || !KovusPride.Publishing.StorePlatform.AllowsOwnMultiplayer) yield break;
+            string invite = KovusPride.Publishing.StorePlatform.InviteParamsJson;
+            if (!string.IsNullOrEmpty(invite)) JoinFromInvite(invite);
+            else if (KovusPride.Publishing.StorePlatform.IsInstantMultiplayer) StartInstantParty();
+        }
+
+        private void OnPlatformEvent(string name, string json)
+        {
+            if (name == "room.join") JoinFromInvite(json);
+        }
+
+        private void JoinFromInvite(string json)
+        {
+            InviteInfo info = null;
+            try { info = JsonUtility.FromJson<InviteInfo>(json); } catch (System.Exception) { }
+            if (info == null || string.IsNullOrEmpty(info.room)) return;
+            // Fuera de lo que esté haciendo (partida, duelo o carrera) y a la sala del amigo
+            StopAllCoroutines();
+            attract = null;
+            LeaveRace();
+            CloseDuel();
+            foreach (var cg in new[] { v.menu, v.gameOver, v.pause, onlineMenu, onlineResult, duelMenu, searching, leaderboard }) Hide(cg);
+            HideRaceOverlays(false);
+            v.countdownText.text = v.stampText.text = v.stampSub.text = "";
+            state = State.Menu;
+            mode = Mode.Normal;
+            ostage = OnlineStage.Lobby;
+            EnsureIdentity();
+            if (info.mode == "duel") { StartDuelSearch("{\"t\":\"djoin\",\"room\":\"" + info.room + "\"}", true); return; }
+            raceStatus.text = "";
+            Show(raceMenu);
+            RaceSend("{\"t\":\"join\",\"room\":\"" + info.room + "\"}");
+        }
+
+        private void StartInstantParty()
+        {
+            Hide(v.menu);
+            ostage = OnlineStage.Lobby;
+            EnsureIdentity();
+            raceStatus.text = "";
+            Show(raceMenu);
+            RaceCreate();
+        }
+
+        // =====================================================================
         // Red
         // =====================================================================
 
@@ -377,6 +435,7 @@ namespace Colorify
                     break;
                 case "droom":
                     duelRoomCode = m.room;
+                    KovusPride.Publishing.StorePlatform.UpdateRoom("duel-" + m.room, true, "{\"mode\":\"duel\",\"room\":\"" + m.room + "\"}");
                     searchSub.text = "Share this code with your friend.\nThe duel starts as soon as they join.";
                     break;
                 case "noghost":
@@ -465,6 +524,8 @@ namespace Colorify
             oppNameText.text = oppInfo.name + (oppInfo.ghost ? "" : $"\n<size=75%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{UIKit.Thousands(oppInfo.trophies)} TROPHIES{(oppInfo.bot ? " · BOT" : "")}</color></size>");
             oppPanel.gameObject.SetActive(true);
             juice.PopIn(oppPanel, 0f, 0.3f, 0.6f);
+            if (duelPrivate && !string.IsNullOrEmpty(duelRoomCode))   // sala llena: ya no se puede entrar
+                KovusPride.Publishing.StorePlatform.UpdateRoom("duel-" + duelRoomCode, false, "{\"mode\":\"duel\",\"room\":\"" + duelRoomCode + "\"}");
             Analytics.Log("game_start", ("mode", "online"), ("level_id", "duel"), ("ghost", oppInfo.ghost));
             StartCoroutine(DuelCountdown(m.lead));
         }
@@ -555,6 +616,7 @@ namespace Colorify
         private void ShowDuelResult(NetMsg m)
         {
             waitingResult = false;
+            KovusPride.Publishing.StorePlatform.LeftRoom();
             state = State.GameOver;
             ostage = OnlineStage.Result;
             string title = m.r == "win" ? ColorifyView.RainbowTitle("YOU WIN!") : m.r == "draw" ? "DRAW" : "YOU LOSE";

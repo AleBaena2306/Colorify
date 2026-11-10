@@ -91,8 +91,10 @@ namespace Colorify
             ShowMenu(instant: true);
             // Plataforma (portfolio, CrazyGames, Playgama, GameDistribution, itch.io): el portal puede pedir pausar
             StorePlatform.OnReady += ApplyPlatformMenu;
+            StorePlatform.PlatformEvent += OnPlatformEvent;
             StorePlatform.Init();
             ApplyPlatformMenu();
+            StartCoroutine(PlatformLaunch());
             StorePlatform.PauseRequested += paused =>
             {
                 if (paused && (state == State.Playing || state == State.Countdown) && mode != Mode.Race && mode != Mode.Online) Pause();
