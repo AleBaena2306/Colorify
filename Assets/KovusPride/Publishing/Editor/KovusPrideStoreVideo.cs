@@ -1,6 +1,8 @@
 // Kovu's Pride · Publishing
 // Graba vídeos de juego para las fichas de los portales (CrazyGames pide uno horizontal 16:9 y otro vertical 2:3,
 // de 15-20 s y sin sonido). Usa Unity Recorder: graba la Game view a la resolución exacta, sin cursor ni audio.
+// Graba a la mitad de resolución y a ritmo real (frame rate variable): a resolución completa y con frame rate fijo
+// el Editor iba a cámara lenta y no se podía jugar. El montaje posterior lo escala a 1080p a 30 fps.
 // Uso: menú «Kovu's Pride > Vídeo para portales > Grabar …». Unity entra en Play y empieza a grabar; juegue
 // normalmente y salga de Play cuando tenga 20-30 s buenos (se para solo a los 60 s). El archivo queda en
 // <proyecto>/Publishing/store/video/raw-<orientación>.mp4; después se recorta y se le pone la portada delante.
@@ -28,11 +30,11 @@ namespace KovusPride.Publishing.Editor
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
         }
 
-        [MenuItem("Kovu's Pride/Vídeo para portales/Grabar vertical 2:3 (1080x1620)")]
-        private static void RecordPortrait() => Begin("portrait", 1080, 1620);
+        [MenuItem("Kovu's Pride/Vídeo para portales/Grabar vertical 2:3")]
+        private static void RecordPortrait() => Begin("portrait", 720, 1080);
 
-        [MenuItem("Kovu's Pride/Vídeo para portales/Grabar horizontal 16:9 (1920x1080)")]
-        private static void RecordLandscape() => Begin("landscape", 1920, 1080);
+        [MenuItem("Kovu's Pride/Vídeo para portales/Grabar horizontal 16:9")]
+        private static void RecordLandscape() => Begin("landscape", 1280, 720);
 
         [MenuItem("Kovu's Pride/Vídeo para portales/Abrir la carpeta de vídeos")]
         private static void OpenFolder()
@@ -91,6 +93,7 @@ namespace KovusPride.Publishing.Editor
 
             settings.AddRecorderSettings(movie);
             settings.SetRecordModeToManual();
+            settings.FrameRatePlayback = FrameRatePlayback.Variable;
             settings.FrameRate = 30f;
             settings.CapFrameRate = true;
             RecorderOptions.VerboseMode = false;
