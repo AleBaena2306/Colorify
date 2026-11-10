@@ -21,14 +21,15 @@ def make(W,H,cell,title_w,seed):
     cols=-(-W//cell)+1; rows=-(-H//cell)+1
     ox=(W-cols*cell)//2; oy=(H-rows*cell)//2
     t0=title(200); th0=int(t0.height*title_w/t0.width)
-    pw0,ph0=int(title_w*1.2),int(th0*2.3); m=40
+    pw0,ph0=int(title_w*1.2),int(th0*2.3); m=max(10,cell//6)
     hole=((W-pw0)//2-m,(H-ph0)//2-m,(W+pw0)//2+m,(H+ph0)//2+m)
-    last=None
+    bag=[]
     for r in range(rows):
         for c in range(cols):
             x0,y0=ox+c*cell,oy+r*cell
             if x0<hole[2] and x0+cell>hole[0] and y0<hole[3] and y0+cell>hole[1]: continue
-            t=random.choice([x for x in tiles if x is not last]); last=t
+            if not bag: bag.extend(random.sample(tiles,len(tiles)))
+            t=bag.pop()
             im.paste(t.resize((cell,cell),Image.LANCZOS),(ox+c*cell,oy+r*cell))
     t=title(200); t=t.resize((title_w,int(t.height*title_w/t.width)),Image.LANCZOS)
     tw,th=t.size
@@ -39,6 +40,3 @@ def make(W,H,cell,title_w,seed):
     d.rounded_rectangle((px,py,px+pw,py+ph),radius=int(ph*0.28),fill=panel)
     im.paste(t,((W-tw)//2,(H-th)//2),t)
     return im
-make(1920,1080,216,1000,3).save('landscape.jpg',quality=90)
-make(1080,1920,216,820,5).save('portrait.jpg',quality=90)
-src.save('square.jpg',quality=92)
