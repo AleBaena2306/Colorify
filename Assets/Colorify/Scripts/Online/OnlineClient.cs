@@ -163,8 +163,23 @@ namespace Colorify.Online
         public static string Escape(string s) => (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ");
     }
 
+    // Enlace de un duelo: el servidor propio (DuelConnection, WebSocket) o las salas de la plataforma
+    // (PlaygamaDuel). El juego habla el mismo protocolo con los dos.
+    public interface IDuelLink
+    {
+        bool Welcomed { get; }
+        bool Closed { get; }
+        bool TimedOut { get; }
+        void Poll(List<NetMsg> into);
+        void SendRaw(string json);
+        void Hit(int n, float timeLeft, int g);
+        void Miss(int n, float timeLeft, int g);
+        void Out(int n);
+        void Close();
+    }
+
     // Sesión de duelo: abre el WebSocket, se presenta, mantiene la conexión viva y entrega los mensajes en Update.
-    public class DuelConnection
+    public class DuelConnection : IDuelLink
     {
         private readonly KpSocket socket;
         private readonly string hello;

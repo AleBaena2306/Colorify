@@ -59,6 +59,16 @@ Google y servidor de la propia web). En los portales:
 - **CrazyGames:** crear el juego en el portal y subir el zip (o arrastrar la carpeta). El primer envío es una
   Basic Launch: sin anuncios y sin integración obligatoria. Si las métricas son buenas, CrazyGames invita al
   lanzamiento completo (anuncios, módulo de datos y cuenta de CrazyGames).
+- **Playgama · subida desde Unity:** al terminar la build de Playgama, Unity ofrece subirla (o «COLORIFY > Build >
+  Playgama · subir la última build»). La primera vez abre el navegador para conectar la cuenta (OAuth del servidor
+  MCP de Playgama; el permiso se guarda en este ordenador, en EditorPrefs). Sube el zip, espera al análisis y pregunta
+  antes de publicar en la página de prueba. Menús «Kovu's Pride > Playgama > Conectar cuenta / Desconectar».
+  Necesita `playgamaApplicationId` en publish.json.
+- **Playgama · clasificación y multijugador (Bridge SaaS):** `playgamaPublicToken` (ficha del juego en su consola,
+  Bridge SaaS) y `playgamaLeaderboards` (ids creados allí) van a playgama-bridge-config.json. El juego lee la tabla con
+  `StorePlatform.Call("lb.entries", …)` cuando `StorePlatform.HasInGameLeaderboard`. El multijugador (salas en sus
+  servidores, `StorePlatform.Call("mp.…")` y `StorePlatform.PlatformEvent`) se activa con `playgamaMultiplayer: true`,
+  solo cuando el juego ya está en su catálogo (la página de prueba no admite juegos multijugador).
 - **Playgama:** conectar su servidor MCP en Claude (`https://developer.playgama.com/api/mcp`, OAuth) para que
   Claude suba las builds. Si no, subir el zip en el portal. Lo que su revisión exige y ya resuelve el sistema: SDK
   v2 como primer script e iniciado antes que Unity, guardado por su SDK (nada de PlayerPrefs ni caché en

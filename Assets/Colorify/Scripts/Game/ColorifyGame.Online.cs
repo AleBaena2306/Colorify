@@ -17,7 +17,7 @@ namespace Colorify
         private enum OnlineStage { None, Lobby, Searching, Playing, Result }
 
         private OnlineStage ostage = OnlineStage.None;
-        private DuelConnection duel;
+        private IDuelLink duel;
         private readonly List<NetMsg> inbox = new List<NetMsg>();
         private bool queueSent;
         private int duelSeed;
@@ -50,7 +50,13 @@ namespace Colorify
         private Image oppTimerBack, oppTimerFill;
         private readonly Dictionary<string, Image> lbTabs = new Dictionary<string, Image>();
         private string lbMode = "points";
-        private Button resAgain;
+        private Button resAgain, onlineLbButton;
+
+        // Duelos: servidor propio o salas de la plataforma (Playgama), con el mismo protocolo
+        private IDuelLink NewDuelLink() =>
+            KovusPride.Publishing.StorePlatform.AllowsOwnServer
+                ? (IDuelLink)new DuelConnection(cfg, save.playerId, CurrentName, save.bestNormalHits)
+                : new PlaygamaDuel(cfg, CurrentName, save.trophies);
 
         // =====================================================================
         // Pantallas
@@ -83,6 +89,15 @@ namespace Colorify
             UIKit.Place((RectTransform)race.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -240));
             var lb = UIKit.Button("Leaderboard", onlineMenu.transform, "LEADERBOARD", ColorifyView.TitleColors[0], new Vector2(560, 110), () => ShowLeaderboard(lbMode), 48);
             UIKit.Place((RectTransform)lb.transform, 0.5f, 0.5f, new Vector2(560, 110), new Vector2(0, -395));
+            if (!KovusPride.Publishing.StorePlatform.AllowsOwnServer)
+            {
+                // Salas de la plataforma (Playgama): solo duelos, sin trofeos; la clasificación, la de la plataforma
+                race.gameObject.SetActive(false);
+                onlineTrophies.gameObject.SetActive(false);
+                UIKit.Place((RectTransform)find.transform, 0.5f, 0.5f, new Vector2(680, 150), new Vector2(0, -120));
+                UIKit.Place((RectTransform)lb.transform, 0.5f, 0.5f, new Vector2(560, 110), new Vector2(0, -300));
+                onlineLbButton = lb;
+            }
             onlineStatus = UIKit.Text("Status", onlineMenu.transform, "", 36, UIKit.Danger);
             UIKit.Place(onlineStatus.rectTransform, 0.5f, 0.5f, new Vector2(960, 100), new Vector2(0, -515));
             var back = UIKit.Button("Back", onlineMenu.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); ShowMenu(); }, 50);
@@ -284,7 +299,7 @@ namespace Colorify
             normal = null;
             mode = Mode.Online;
             state = State.Menu;
-            if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, CurrentName, save.bestNormalHits); }
+            if (duel == null || duel.Closed) { CloseDuel(); duel = NewDuelLink(); }
             queueSent = false;
             if (duel.Welcomed) { duel.SendRaw(duelFirst); queueSent = true; }
             ostage = OnlineStage.Searching;
@@ -356,7 +371,9 @@ namespace Colorify
                     HandleRace(m);
                     break;
                 case "queued":
-                    searchSub.text = PlayersOnline(m.online) + "\nLooking for an opponent with similar trophies.\nIf nobody's around, our bot will play you.";
+                    searchSub.text = KovusPride.Publishing.StorePlatform.AllowsOwnServer
+                        ? PlayersOnline(m.online) + "\nLooking for an opponent with similar trophies.\nIf nobody's around, our bot will play you."
+                        : "Looking for an opponent.\nIf nobody's around, our bot will play you.";
                     break;
                 case "droom":
                     duelRoomCode = m.room;
@@ -572,6 +589,8 @@ namespace Colorify
 
         private void ShowLeaderboard(string m)
         {
+            if (!KovusPride.Publishing.StorePlatform.AllowsOwnServer) { ShowPlatformLeaderboard(); return; }
+            foreach (var kv in lbTabs) kv.Value.gameObject.SetActive(true);
             sfx.Play(Sfx.Id.Click);
             EnsureIdentity();
             lbMode = m;
@@ -581,6 +600,41 @@ namespace Colorify
             lbMe.text = "";
             Show(leaderboard);
             StartCoroutine(OnlineApi.GetScores(cfg, m, save.playerId, r => { if (lbMode == m) FillLeaderboard(r); }));
+        }
+
+        // Clasificación de la plataforma (Playgama, «in_game»): sus servidores guardan, el juego pinta la tabla
+        [System.Serializable] private class PlatformLbEntry { public string id, name; public long score; public int rank; }
+        [System.Serializable] private class PlatformLb { public List<PlatformLbEntry> entries = new List<PlatformLbEntry>(); public string me; }
+
+        private void ShowPlatformLeaderboard()
+        {
+            sfx.Play(Sfx.Id.Click);
+            lbMode = "points";
+            foreach (var kv in lbTabs) kv.Value.gameObject.SetActive(false);   // una sola tabla: puntos del modo Normal
+            for (int i = lbList.childCount - 1; i >= 0; i--) Destroy(lbList.GetChild(i).gameObject);
+            lbStatus.text = "Loading…";
+            lbMe.text = "";
+            Show(leaderboard);
+            KovusPride.Publishing.StorePlatform.Call("lb.entries", "{\"board\":\"best\"}", (ok, json) =>
+            {
+                if (leaderboard == null) return;
+                var r = new ScoresResponse { ok = ok, mode = "points" };
+                if (ok)
+                {
+                    PlatformLb lb = null;
+                    try { lb = JsonUtility.FromJson<PlatformLb>(json); } catch (System.Exception) { }
+                    lb = lb ?? new PlatformLb();
+                    lb.entries.Sort((a, b) => a.rank.CompareTo(b.rank));
+                    foreach (var e in lb.entries)
+                    {
+                        bool me = !string.IsNullOrEmpty(lb.me) && e.id == lb.me;
+                        r.top.Add(new ScoreRow { rank = e.rank, name = string.IsNullOrEmpty(e.name) ? "Player" : e.name, score = e.score, me = me });
+                        if (me) r.me = new MyRank { rank = e.rank, best = e.score };
+                    }
+                    r.total = r.top.Count;
+                }
+                FillLeaderboard(r);
+            });
         }
 
         private void FillLeaderboard(ScoresResponse r)

@@ -37,6 +37,14 @@ public static class KovusPridePublish
         // Claves de guardado que el juego usa con StorePlatform.LoadString/SaveString. En Playgama se leen con su SDK
         // antes de arrancar Unity (lo exige: el estado del jugador se restaura antes de enseñar el juego).
         public string[] storageKeys = new string[0];
+        // Playgama: id del juego en su consola (subida automática) y token público de Bridge SaaS (clasificaciones y
+        // multijugador; está en la ficha del juego, Bridge SaaS). El token es público: va dentro del juego.
+        public string playgamaApplicationId = "";
+        public string playgamaPublicToken = "";
+        public string[] playgamaLeaderboards = new string[0];   // ids creados en la consola, p. ej. «best»
+        // Multijugador de Playgama (salas en sus servidores). Solo se puede activar cuando el juego está en su
+        // catálogo (la página de prueba no admite juegos multijugador).
+        public bool playgamaMultiplayer = false;
     }
 
     private class Profile
@@ -180,16 +188,14 @@ public static class KovusPridePublish
         if (!html.Contains("<!-- KP_STORE_HEAD -->")) { Fail(title, "El index.html no viene de la plantilla KovusPridePortal."); return false; }
         string keys = string.Join(", ", (settings.storageKeys ?? new string[0])
             .Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => "'" + k.Trim().Replace("'", "") + "'"));
-        string head = p.head + "\n  <script>window.KP_STORAGE_KEYS = [" + keys + "];</script>";
+        string head = p.head + "\n  <script>window.KP_STORAGE_KEYS = [" + keys + "];</script>\n  " + OptionsScript(store, settings);
         html = html.Replace("<!-- KP_STORE_HEAD -->", head);
         File.WriteAllText(index, html, new UTF8Encoding(false));
         File.Copy(AdapterPath, Path.Combine(outDir, "kp-platform.js"), true);
         if (store == Store.Playgama)
             // Sin minimumDelayBetweenInterstitial: Playgama pide dejar los valores por defecto de cada plataforma.
             // La clasificación «best» la usan las plataformas de Playgama que la tienen (MSN, YouTube, Lagged…).
-            File.WriteAllText(Path.Combine(outDir, "playgama-bridge-config.json"),
-                "{\n  \"leaderboards\": [\n    { \"id\": \"best\", \"isMain\": true }\n  ]\n}\n",
-                new UTF8Encoding(false));
+            File.WriteAllText(Path.Combine(outDir, "playgama-bridge-config.json"), PlaygamaConfig(settings), new UTF8Encoding(false));
 
         // Comprobaciones
         var problems = new List<string>();
@@ -238,10 +244,53 @@ public static class KovusPridePublish
         return true;
     }
 
+    // playgama-bridge-config.json: clasificaciones (las de la consola, en SaaS para Playgama y su herramienta de
+    // pruebas; en el resto de plataformas de su red, las nativas) y el token público de Bridge SaaS
+    private static string PlaygamaConfig(Settings s)
+    {
+        var boards = (s.playgamaLeaderboards ?? new string[0]).Where(b => !string.IsNullOrWhiteSpace(b)).Select(b => b.Trim()).ToList();
+        var sb = new StringBuilder("{\n");
+        if (!string.IsNullOrWhiteSpace(s.playgamaPublicToken))
+        {
+            sb.Append("  \"saas\": {\n    \"publicToken\": \"").Append(s.playgamaPublicToken.Trim()).Append("\"");
+            if (boards.Count > 0) sb.Append(",\n    \"leaderboards\": { \"platforms\": [\"playgama\", \"qa_tool\"] }");
+            sb.Append("\n  }").Append(boards.Count > 0 ? "," : "").Append("\n");
+        }
+        if (boards.Count > 0)
+        {
+            sb.Append("  \"leaderboards\": [\n");
+            for (int i = 0; i < boards.Count; i++)
+                sb.Append("    { \"id\": \"").Append(boards[i]).Append("\"").Append(i == 0 ? ", \"isMain\": true" : "").Append(" }").Append(i < boards.Count - 1 ? "," : "").Append("\n");
+            sb.Append("  ]\n");
+        }
+        return sb.Append("}\n").ToString();
+    }
+
+    // Opciones de la plataforma que lee el juego en el arranque (window.KP_OPTIONS)
+    private static string OptionsScript(Store store, Settings s)
+    {
+        bool mp = store == Store.Playgama && s.playgamaMultiplayer && !string.IsNullOrWhiteSpace(s.playgamaPublicToken);
+        return "<script>window.KP_OPTIONS = { multiplayer: " + (mp ? "true" : "false") + " };</script>";
+    }
+
     // ---------------- Subida ----------------
 
     private static void Upload(Profile p, Settings s, string outDir, string zipPath, string version, bool ask)
     {
+        if (p.store == Store.Playgama && !string.IsNullOrWhiteSpace(s.playgamaApplicationId))
+        {
+            if (!ask || EditorUtility.DisplayDialog("Playgama", $"¿Subir la versión {version} a Playgama ahora?\n\n" +
+                    (KovusPridePlaygama.IsConnected ? "" : "La primera vez se abre el navegador para conectar su cuenta de Playgama.\n\n") +
+                    "Después de subirla, Unity le preguntará si la publica en la página de prueba.", "Subir", "Ahora no"))
+            {
+                KovusPridePlaygama.Upload(s.playgamaApplicationId, zipPath, Path.GetFileNameWithoutExtension(zipPath),
+                    detail => Log(p, version, "PLAYGAMA", 0, 0, 0, detail));
+                return;
+            }
+            EditorUtility.RevealInFinder(zipPath);
+            return;
+        }
+
         if (p.store == Store.Itch && !string.IsNullOrWhiteSpace(s.itchTarget))
         {
             string butler = FindButler(s.butlerPath);
@@ -264,6 +313,18 @@ public static class KovusPridePublish
         if (ask && EditorUtility.DisplayDialog($"{p.name} · lista para subir",
                 $"Zip preparado:\n{zipPath}\n\n{p.notes}\n\n¿Abrir el portal de {p.name}?", "Abrir", "Cerrar"))
             Application.OpenURL(p.uploadUrl);
+    }
+
+    // Sube a Playgama la última build generada (sin volver a compilar)
+    public static void UploadLast(Store store, string gameName)
+    {
+        var s = LoadSettings(gameName);
+        var p = GetProfile(store, s);
+        string dir = Path.Combine(ProjectRoot, "Builds", "Publish", p.folder);
+        var zip = Directory.Exists(dir) ? new DirectoryInfo(dir).GetFiles("*.zip").OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault() : null;
+        if (zip == null) { EditorUtility.DisplayDialog(p.name, $"No hay ninguna build de {p.name}. Compílela primero.", "Vale"); return; }
+        string version = PlayerSettings.bundleVersion;
+        Upload(p, s, Path.Combine(dir, "web"), zip.FullName, version, true);
     }
 
     private static string FindButler(string configured)

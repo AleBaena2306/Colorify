@@ -13,6 +13,9 @@ public static class ColorifyPublish
     [MenuItem("COLORIFY/Build/Playgama", priority = 101)]
     public static void Playgama() => KovusPridePublish.Build(Store.Playgama, Game);
 
+    [MenuItem("COLORIFY/Build/Playgama · subir la última build", priority = 111)]
+    public static void PlaygamaUpload() => KovusPridePublish.UploadLast(Store.Playgama, Game);
+
     [MenuItem("COLORIFY/Build/GameDistribution", priority = 102)]
     public static void GameDistribution() => KovusPridePublish.Build(Store.GameDistribution, Game);
 

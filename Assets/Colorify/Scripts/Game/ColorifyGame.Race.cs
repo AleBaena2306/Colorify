@@ -170,7 +170,7 @@ namespace Colorify
         private void RaceSend(string json)
         {
             EnsureIdentity();
-            if (duel == null || duel.Closed) { CloseDuel(); duel = new DuelConnection(cfg, save.playerId, CurrentName, save.bestNormalHits); }
+            if (duel == null || duel.Closed) { CloseDuel(); duel = NewDuelLink(); }
             if (duel.Welcomed) duel.SendRaw(json);
             else pendingRaceMsg = json;
             raceStatus.text = "Connecting…";

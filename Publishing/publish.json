@@ -6,5 +6,11 @@
     "interstitialMinSeconds": 180.0,
     "storageKeys": [
         "colorify.save.v1"
-    ]
+    ],
+    "playgamaApplicationId": "cmw88pqye1wb8no0h1qs7kg4o",
+    "playgamaPublicToken": "cmw88pqye1wb8no0h1qs7kg4o",
+    "playgamaLeaderboards": [
+        "best"
+    ],
+    "playgamaMultiplayer": false
 }

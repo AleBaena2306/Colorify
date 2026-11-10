@@ -101,6 +101,7 @@ namespace KovusPride.Publishing
         [DllImport("__Internal")] private static extern string KPP_StorageGet(string key);
         [DllImport("__Internal")] private static extern void KPP_StorageSet(string key, string value);
         [DllImport("__Internal")] private static extern void KPP_SetScore(string board, double score);
+        [DllImport("__Internal")] private static extern void KPP_Call(int id, string method, string args);
 
         [MonoPInvokeCallback(typeof(EventCallback))]
         private static void OnJsEvent(int kind, IntPtr json)
@@ -110,8 +111,12 @@ namespace KovusPride.Publishing
         }
 #endif
 
-        // Mensajes de window.KPPlatform: 1 listo, 2 fin de anuncio, 3 pausa, 4 silencio, 5 empieza un anuncio
-        [Serializable] private class JsEvent { public string store; public int ads, rewarded, id, ok, on; public string user, lang; }
+        // Mensajes de window.KPPlatform: 1 listo, 2 fin de anuncio, 3 pausa, 4 silencio, 5 empieza un anuncio,
+        // 6 respuesta de una llamada (Call), 7 evento de la plataforma (PlatformEvent)
+        [Serializable] private class JsEvent
+        {
+            public string store; public int ads, rewarded, id, ok, on, mp; public string user, lang, lb, pid, data, name;
+        }
 
         private static void HandleEvent(int kind, string json)
         {
@@ -124,6 +129,9 @@ namespace KovusPride.Publishing
                     RewardedAvailable = e.rewarded == 1;
                     PlayerName = string.IsNullOrEmpty(e.user) ? "" : e.user;
                     Language = string.IsNullOrEmpty(e.lang) ? "" : e.lang;
+                    LeaderboardType = string.IsNullOrEmpty(e.lb) ? "" : e.lb;
+                    MultiplayerAvailable = e.mp == 1;
+                    PlayerId = string.IsNullOrEmpty(e.pid) ? "" : e.pid;
                     Debug.Log($"[Platform] {Current} listo · intersticiales {InterstitialAvailable} · bonificados {RewardedAvailable}" +
                               (PlayerName != "" ? $" · jugador {PlayerName}" : ""));
                     OnReady?.Invoke();
@@ -143,6 +151,12 @@ namespace KovusPride.Publishing
                     break;
                 case 5:
                     ApplyAudio();
+                    break;
+                case 6:
+                    if (calls.TryGetValue(e.id, out var cb)) { calls.Remove(e.id); cb?.Invoke(e.ok == 1, e.data ?? ""); }
+                    break;
+                case 7:
+                    PlatformEvent?.Invoke(e.name ?? "", e.data ?? "");
                     break;
             }
         }
@@ -286,6 +300,36 @@ namespace KovusPride.Publishing
 #endif
             PlayerPrefs.SetString(key, value ?? "");
             PlayerPrefs.Save();
+        }
+
+        // ---------------- Llamadas a la plataforma ----------------
+        // Clasificación en el juego («in_game»: la plataforma guarda, el juego pinta la tabla), «native» (la pinta la
+        // plataforma) o vacío (no hay). Multijugador: salas de la plataforma (Playgama), si el juego lo activa.
+        public static string LeaderboardType { get; private set; } = "";
+        public static bool HasInGameLeaderboard => LeaderboardType == "in_game";
+        public static bool MultiplayerAvailable { get; private set; }
+        public static string PlayerId { get; private set; } = "";
+
+        // Eventos de la plataforma (nombre, json): mp.joined, mp.left, mp.host, mp.message, mp.roomLeft
+        public static event Action<string, string> PlatformEvent;
+
+        private static readonly System.Collections.Generic.Dictionary<int, Action<bool, string>> calls =
+            new System.Collections.Generic.Dictionary<int, Action<bool, string>>();
+        private static int nextCall = 1;
+
+        // Llamada asíncrona a la plataforma; done(ok, json) llega siempre (sin plataforma, ok = false al momento)
+        public static void Call(string method, string argsJson, Action<bool, string> done)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (IsPortal)
+            {
+                int id = nextCall++;
+                calls[id] = done;
+                try { KPP_Call(id, method, string.IsNullOrEmpty(argsJson) ? "{}" : argsJson); return; }
+                catch (Exception e) { calls.Remove(id); Debug.LogWarning("[Platform] " + e.Message); }
+            }
+#endif
+            done?.Invoke(false, "{\"error\":\"not_supported\"}");
         }
 
         // ---------------- Clasificación ----------------

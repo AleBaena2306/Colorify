@@ -20,6 +20,23 @@ namespace Colorify
         private Juice juice;
         private Sfx sfx;
         private Music music;
+        private Button menuOnline, menuRanking, menuSound;
+
+        // Botones del menú según la plataforma. Con servidor propio, todo. En Playgama: Online solo con sus salas de
+        // multijugador activadas, y Ranking solo si su clasificación está disponible (se sabe cuando su SDK responde).
+        private void ApplyPlatformMenu()
+        {
+            if (menuOnline == null) return;
+            bool own = StorePlatform.AllowsOwnServer;
+            bool online = own || StorePlatform.MultiplayerAvailable;
+            bool ranking = own || StorePlatform.HasInGameLeaderboard;
+            menuOnline.gameObject.SetActive(online);
+            menuRanking.gameObject.SetActive(ranking);
+            float rowY = online ? -430f : -200f;
+            UIKit.Place((RectTransform)menuRanking.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, rowY));
+            UIKit.Place((RectTransform)menuSound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(ranking ? 215 : 0, rowY));
+            if (onlineLbButton != null) onlineLbButton.gameObject.SetActive(ranking);
+        }
         private Ads ads;
         private SaveData save;
         private readonly System.Random rng = new System.Random();
@@ -73,7 +90,9 @@ namespace Colorify
             RegisterBackActions();
             ShowMenu(instant: true);
             // Plataforma (portfolio, CrazyGames, Playgama, GameDistribution, itch.io): el portal puede pedir pausar
+            StorePlatform.OnReady += ApplyPlatformMenu;
             StorePlatform.Init();
+            ApplyPlatformMenu();
             StorePlatform.PauseRequested += paused =>
             {
                 if (paused && (state == State.Playing || state == State.Countdown) && mode != Mode.Race && mode != Mode.Online) Pause();
@@ -124,13 +143,10 @@ namespace Colorify
             var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
             UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(215, -430));
             v.menuSoundLabel = sound.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-            if (!StorePlatform.AllowsOwnServer)
-            {
-                // Sin servidor propio: ni Online ni Ranking; el botón de sonido pasa al centro
-                onlineBtn.gameObject.SetActive(false);
-                best.gameObject.SetActive(false);
-                UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(0, -200));
-            }
+            menuOnline = onlineBtn;
+            menuRanking = best;
+            menuSound = sound;
+            ApplyPlatformMenu();
 
             // --- Pausa ---
             v.pause = v.Overlay("Pause");

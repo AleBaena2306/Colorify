@@ -9,6 +9,10 @@
 //   showAd(id, type, placement) type: 'interstitial' | 'rewarded'. Siempre acaba con emit(2, {id, ok})
 //   storageGet(key) / storageSet(key, value)   guardado de la plataforma (solo Playgama; null si no hay)
 //   setScore(board, score)     clasificación de la plataforma, si la tiene
+//   call(id, method, argsJson) llamada asíncrona: responde con emit(6, {id, ok, data}) — data es JSON en texto.
+//                              Métodos (Playgama): lb.entries {board} · mp.quick {max, filter} · mp.create {max}
+//                              mp.join {room} · mp.findJoin {filter} · mp.close · mp.leave · mp.send {type, data, to}
+//   Eventos de la plataforma: emit(7, {name, data}) — mp.joined, mp.left, mp.message, mp.roomLeft, mp.host
 // Si un SDK falla o no responde, el juego sigue: «listo» sin anuncios a los 8 s y anuncios que caducan a los 60 s.
 (function () {
   'use strict';
@@ -24,7 +28,18 @@
     ready = true;
     info = info || {};
     emit(1, { store: store, ads: info.ads ? 1 : 0, rewarded: info.rewarded ? 1 : 0, user: info.user || '',
-              lang: info.lang || info0.lang || '' });
+              lang: info.lang || info0.lang || '', lb: info.lb || '', mp: info.mp ? 1 : 0, pid: info.pid || '' });
+  }
+
+  function reply(id, ok, data) {
+    var text = '';
+    try { text = data === undefined || data === null ? '' : (typeof data === 'string' ? data : JSON.stringify(data)); } catch (e) { }
+    emit(6, { id: id, ok: ok ? 1 : 0, data: text });
+  }
+  function platformEvent(name, data) {
+    var text = '';
+    try { text = data === undefined || data === null ? '' : JSON.stringify(data); } catch (e) { }
+    emit(7, { name: name, data: text });
   }
 
   function adStarted() { if (current) emit(5, { id: current.id }); }
@@ -140,7 +155,11 @@
         if (E.AUDIO_STATE_CHANGED) b.platform.on(E.AUDIO_STATE_CHANGED, function (on) { emit(4, { on: on ? 0 : 1 }); });
       } catch (e) { console.warn('[KPPlatform] Playgama listeners', e); }
       var a = b.advertisement || {};
-      sendReady({ ads: a.isInterstitialSupported, rewarded: a.isRewardedSupported, user: b.player && b.player.name });
+      var lbType = ''; try { lbType = (b.leaderboards && b.leaderboards.type) || ''; } catch (e) { }
+      var mpOk = false; try { mpOk = !!(window.KP_OPTIONS && window.KP_OPTIONS.multiplayer && b.multiplayer && b.multiplayer.isSupported); } catch (e) { }
+      if (mpOk) pg.listenRooms(b);
+      sendReady({ ads: a.isInterstitialSupported, rewarded: a.isRewardedSupported, user: b.player && b.player.name,
+                  lb: lbType, mp: mpOk, pid: (b.player && b.player.id) || '' });
       if (info0.audio === false) emit(4, { on: 1 });   // el estado inicial no llega como evento
       try { if (a.interstitialState === 'opened' || a.rewardedState === 'opened') emit(3, { on: 1 }); } catch (e) { }
     },
@@ -165,6 +184,70 @@
       var b = window.bridge; if (!b || !pg.ok) return;
       try { b.storage.set([key], [value]).catch(function (e) { console.warn('[KPPlatform] storage.set', e); }); }
       catch (e) { console.warn('[KPPlatform] storage.set', e); }
+    },
+    // Salas de multijugador: los eventos llegan al juego como emit(7, …)
+    listenRooms: function (b) {
+      var E = b.EVENT_NAME || {}, m = b.multiplayer;
+      var who = function (p) { return p ? { id: p.id, name: p.name || '', host: !!p.isHost } : null; };
+      try {
+        if (E.MULTIPLAYER_PLAYER_JOINED) m.on(E.MULTIPLAYER_PLAYER_JOINED, function (p) { platformEvent('mp.joined', who(p)); });
+        if (E.MULTIPLAYER_PLAYER_LEFT) m.on(E.MULTIPLAYER_PLAYER_LEFT, function (p) { platformEvent('mp.left', who(p)); });
+        if (E.MULTIPLAYER_HOST_CHANGED) m.on(E.MULTIPLAYER_HOST_CHANGED, function (p) { platformEvent('mp.host', who(p)); });
+        if (E.MULTIPLAYER_ROOM_LEFT) m.on(E.MULTIPLAYER_ROOM_LEFT, function (r) { platformEvent('mp.roomLeft', { reason: String(r || '') }); });
+        if (E.MULTIPLAYER_MESSAGE_RECEIVED) m.on(E.MULTIPLAYER_MESSAGE_RECEIVED, function (msg) {
+          platformEvent('mp.message', { type: msg && msg.type, from: msg && msg.from, data: msg && msg.data !== undefined ? JSON.stringify(msg.data) : '' });
+        });
+      } catch (e) { console.warn('[KPPlatform] multiplayer listeners', e); }
+    },
+    room: function (b) {
+      var m = b.multiplayer, list = [];
+      try { (m.players || []).forEach(function (p) { list.push({ id: p.id, name: p.name || '', host: !!p.isHost }); }); } catch (e) { }
+      return { room: m.roomId || '', host: !!m.isHost, me: m.playerId || '', players: list };
+    },
+    call: function (id, method, args) {
+      var b = window.bridge;
+      if (!b || !pg.ok) { reply(id, false, { error: 'not_ready' }); return; }
+      var fail = function (e) { reply(id, false, { error: (e && (e.code || e.message)) || String(e || 'error') }); };
+      var m = b.multiplayer;
+      switch (method) {
+        case 'lb.entries':
+          if (!b.leaderboards || b.leaderboards.type !== 'in_game') { reply(id, false, { error: 'not_available' }); return; }
+          b.leaderboards.getEntries(args.board).then(function (entries) {
+            var out = [];
+            (entries || []).forEach(function (e) { out.push({ id: String(e.id || ''), name: e.name || '', score: Number(e.score) || 0, rank: Number(e.rank) || 0 }); });
+            reply(id, true, { entries: out, me: (b.player && b.player.id) || '' });
+          }).catch(fail);
+          return;
+        case 'mp.quick':
+          m.joinOrCreateRoom({ maxPlayers: args.max || 2, filter: args.filter || {} }).then(function () { reply(id, true, pg.room(b)); }).catch(fail);
+          return;
+        case 'mp.create':
+          m.createRoom({ maxPlayers: args.max || 2, isVisible: !!args.visible, filter: args.filter || undefined })
+            .then(function () { reply(id, true, pg.room(b)); }).catch(fail);
+          return;
+        case 'mp.findJoin':
+          // Sala visible con este filtro exacto (p. ej. el código corto de un duelo privado): se entra en la primera
+          m.getRooms({ filter: args.filter || {}, limit: 5 }).then(function (rooms) {
+            if (!rooms || !rooms.length) { reply(id, false, { error: 'MULTIPLAYER_ROOM_NOT_FOUND' }); return; }
+            return m.joinRoom(rooms[0].id).then(function () { reply(id, true, pg.room(b)); });
+          }).catch(fail);
+          return;
+        case 'mp.join':
+          m.joinRoom(String(args.room || '').toUpperCase()).then(function () { reply(id, true, pg.room(b)); }).catch(fail);
+          return;
+        case 'mp.leave':
+          try { m.leaveRoom(); } catch (e) { }
+          reply(id, true, {});
+          return;
+        case 'mp.close':
+          try { m.setRoomOpen(false); } catch (e) { }
+          reply(id, true, {});
+          return;
+        case 'mp.send':
+          try { m.send(args.type, args.data || {}, args.to ? { to: args.to } : undefined); reply(id, true, {}); } catch (e) { fail(e); }
+          return;
+      }
+      reply(id, false, { error: 'unknown_method' });
     },
     setScore: function (board, score) {
       var b = window.bridge; if (!b || !pg.ok || !b.leaderboards) return;
@@ -227,5 +310,11 @@
     storageGet: function (key) { try { return impl.storageGet ? impl.storageGet(key) : null; } catch (err) { return null; } },
     storageSet: function (key, value) { try { if (impl.storageSet) impl.storageSet(key, value); } catch (err) { } },
     setScore: function (board, score) { try { if (impl.setScore) impl.setScore(board, score); } catch (err) { } },
+    call: function (id, method, argsJson) {
+      var args = {};
+      try { args = argsJson ? JSON.parse(argsJson) : {}; } catch (err) { }
+      if (!impl.call) { reply(id, false, { error: 'not_supported' }); return; }
+      try { impl.call(id, method, args); } catch (err) { reply(id, false, { error: String(err && err.message || err) }); }
+    },
   };
 })();
