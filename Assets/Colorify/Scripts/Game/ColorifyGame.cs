@@ -416,7 +416,7 @@ namespace Colorify
             normal.streak++;
             if (normal.streak > normal.bestStreak) normal.bestStreak = normal.streak;
             float bonus = normal.HitBonus;
-            // Un acierto siempre te deja como mínimo en el 25 % del tiempo (normalHitFloorFraction)
+            // Un acierto siempre te deja como mínimo en el 10 % del tiempo (normalHitFloorFraction)
             float floor = (normal.MaxTime < float.MaxValue ? normal.MaxTime : normal.StartTime) * cfg.normalHitFloorFraction;
             float before = timeLeft;
             timeLeft = Mathf.Min(Mathf.Max(timeLeft + bonus, floor), normal.MaxTime);

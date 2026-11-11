@@ -23,6 +23,56 @@
   var current = null;   // { id, rewarded, earned, timer, seen }
   var info0 = {};       // lo que se sabe del SDK tras preload (idioma, audio)
   var cache = {};       // guardado leído en preload
+  var state = { pause: false, mute: false };   // lo último que se le ha dicho a Unity
+
+  // ---------------- Audio del navegador ----------------
+  // Unity crea su AudioContext al arrancar. Un anuncio a pantalla completa, cambiar de pestaña o una interrupción del
+  // móvil pueden dejarlo «suspended» o «interrupted», y Unity no siempre lo reanuda: el juego se queda sin sonido para
+  // el resto de la sesión (jugadores de Playgama, 11/11/2026). Este archivo se carga antes que Unity, así que se
+  // apuntan los AudioContext que se crean y se reanudan al acabar un anuncio, al volver a la pestaña y con cada toque o
+  // tecla (algunos navegadores solo dejan reanudar tras un gesto). Nunca mientras hay anuncio, pausa o silencio.
+  var audioContexts = [];
+  (function () {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      var Tracked = function () {
+        var ctx = new (Function.prototype.bind.apply(AC, [null].concat([].slice.call(arguments))))();
+        audioContexts.push(ctx);
+        return ctx;
+      };
+      Tracked.prototype = AC.prototype;
+      if (window.AudioContext) window.AudioContext = Tracked;
+      if (window.webkitAudioContext) window.webkitAudioContext = Tracked;
+    } catch (e) { }
+  })();
+  function resumeAudio() {
+    if (current || state.pause || state.mute) return;
+    for (var i = 0; i < audioContexts.length; i++) {
+      var c = audioContexts[i];
+      try {
+        if (c.state !== 'running' && c.state !== 'closed') { var p = c.resume(); if (p && p.catch) p.catch(function () { }); }
+      } catch (e) { }
+    }
+  }
+  ['pointerdown', 'touchend', 'mousedown', 'keydown'].forEach(function (t) { window.addEventListener(t, resumeAudio, true); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(resumeAudio, 50); });
+
+  // Pausa y silencio pedidos por la plataforma: solo se avisa a Unity cuando cambian
+  function setPause(on) {
+    on = !!on;
+    if (on === state.pause) return;
+    state.pause = on;
+    emit(3, { on: on ? 1 : 0 });
+    if (!on) setTimeout(resumeAudio, 0);
+  }
+  function setMute(on) {
+    on = !!on;
+    if (on === state.mute) return;
+    state.mute = on;
+    emit(4, { on: on ? 1 : 0 });
+    if (!on) setTimeout(resumeAudio, 0);
+  }
 
   function sendReady(info) {
     if (ready) return;
@@ -51,12 +101,13 @@
     var c = current; current = null;
     clearTimeout(c.timer);
     emit(2, { id: c.id, ok: ok ? 1 : 0 });
+    setTimeout(resumeAudio, 0);
   }
 
   function beginAd(id, type, noStartMs) {
     if (current) { emit(2, { id: id, ok: 0 }); return false; }
     current = { id: id, rewarded: type === 'rewarded', earned: false, seen: false };
-    current.timer = setTimeout(function () { adFinished(false); }, 60000);
+    current.timer = setTimeout(function () { adFinished(false); }, type === 'rewarded' ? 60000 : 40000);
     // Si el SDK decide no enseñar nada (demasiado pronto, sin inventario) puede que no avise: no se espera
     if (noStartMs) {
       var c = current;
@@ -81,9 +132,9 @@
         // Anuncios solo en CrazyGames (y en local con su SDK); en Basic Launch el propio SDK responde adsDisabled
         var ads = sdk.environment === 'crazygames' || sdk.environment === 'local';
         try {
-          if (sdk.game && sdk.game.settings && sdk.game.settings.muteAudio) emit(4, { on: 1 });
+          if (sdk.game && sdk.game.settings && sdk.game.settings.muteAudio) setMute(true);
           if (sdk.game && sdk.game.addSettingsChangeListener)
-            sdk.game.addSettingsChangeListener(function (s) { emit(4, { on: s && s.muteAudio ? 1 : 0 }); });
+            sdk.game.addSettingsChangeListener(function (s) { setMute(s && s.muteAudio); });
         } catch (e) { }
         // Multijugador de CrazyGames: el juego usa su propio servidor, y el SDK solo sabe en qué sala está cada uno
         // (amigos, invitaciones y la entrada directa desde su página de multijugador)
@@ -168,20 +219,23 @@
         if (E.INTERSTITIAL_STATE_CHANGED) b.advertisement.on(E.INTERSTITIAL_STATE_CHANGED, function (s) {
           if (!current || current.rewarded) return;
           current.seen = true;
-          if (s === 'opened') adStarted();
+          if (s === 'opened') { current.opened = true; adStarted(); }
           else if (s === 'closed') adFinished(true);
           else if (s === 'failed') adFinished(false);
         });
         if (E.REWARDED_STATE_CHANGED) b.advertisement.on(E.REWARDED_STATE_CHANGED, function (s) {
           if (!current || !current.rewarded) return;
           current.seen = true;
-          if (s === 'opened') adStarted();
+          if (s === 'opened') { current.opened = true; adStarted(); }
           else if (s === 'rewarded') current.earned = true;   // la recompensa solo con «rewarded»
           else if (s === 'closed') adFinished(current.earned);
           else if (s === 'failed') adFinished(false);
         });
-        if (E.PAUSE_STATE_CHANGED) b.platform.on(E.PAUSE_STATE_CHANGED, function (p) { emit(3, { on: p ? 1 : 0 }); });
-        if (E.AUDIO_STATE_CHANGED) b.platform.on(E.AUDIO_STATE_CHANGED, function (on) { emit(4, { on: on ? 0 : 1 }); });
+        if (E.PAUSE_STATE_CHANGED) b.platform.on(E.PAUSE_STATE_CHANGED, function (p) {
+          if (p) pg.pauseFromAd = !!current || pg.adOpen(b);
+          setPause(p);
+        });
+        if (E.AUDIO_STATE_CHANGED) b.platform.on(E.AUDIO_STATE_CHANGED, function (on) { setMute(on === false); });
       } catch (e) { console.warn('[KPPlatform] Playgama listeners', e); }
       var a = b.advertisement || {};
       var lbType = ''; try { lbType = (b.leaderboards && b.leaderboards.type) || ''; } catch (e) { }
@@ -189,8 +243,26 @@
       if (mpOk) pg.listenRooms(b);
       sendReady({ ads: a.isInterstitialSupported, rewarded: a.isRewardedSupported, user: b.player && b.player.name,
                   lb: lbType, mp: mpOk, pid: (b.player && b.player.id) || '' });
-      if (info0.audio === false) emit(4, { on: 1 });   // el estado inicial no llega como evento
-      try { if (a.interstitialState === 'opened' || a.rewardedState === 'opened') emit(3, { on: 1 }); } catch (e) { }
+      // El estado se lee en vivo, no el de preload: si al arrancar había un anuncio (o el audio estaba apagado) y el
+      // aviso de «ya está» llegó antes de registrar los listeners, el juego se quedaba en silencio para siempre.
+      if (pg.adOpen(b)) { pg.pauseFromAd = true; setPause(true); }
+      pg.sync();
+      setInterval(pg.sync, 1500);
+    },
+    adOpen: function (b) {
+      try { var a = b.advertisement || {}; return a.interstitialState === 'opened' || a.rewardedState === 'opened'; } catch (e) { return false; }
+    },
+    // Red de seguridad cada 1,5 s: el audio de la plataforma, un anuncio que ya se cerró sin avisar con «closed» (en la
+    // telemetría salían más «opened» que «closed») y una pausa de anuncio que no se levantó.
+    sync: function () {
+      var b = window.bridge; if (!b || !pg.ok) return;
+      try { if (b.platform.isAudioEnabled === true || b.platform.isAudioEnabled === false) setMute(!b.platform.isAudioEnabled); } catch (e) { }
+      if (pg.adOpen(b)) return;
+      if (current && current.opened) {
+        var st = ''; try { st = current.rewarded ? b.advertisement.rewardedState : b.advertisement.interstitialState; } catch (e) { }
+        if (st === 'closed' || st === 'failed') adFinished(current.rewarded ? current.earned : true);
+      }
+      if (state.pause && pg.pauseFromAd && !current && !document.hidden) { pg.pauseFromAd = false; setPause(false); }
     },
     message: function (name) {
       var b = window.bridge; if (!b || !b.platform || !pg.ok) return;

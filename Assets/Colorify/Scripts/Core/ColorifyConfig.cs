@@ -144,8 +144,8 @@ namespace Colorify
         public float normalSimilarity = 1f;
         [Tooltip("Modo Normal: segundos que, al perder, se señala y bota la ficha correcta antes de la pantalla de fin.")]
         public float normalRevealSeconds = 2.2f;
-        [Tooltip("Modo Normal: un acierto siempre te deja como mínimo en esta fracción del tiempo máximo (0,25 = 25 %)")]
-        [Range(0, 1)] public float normalHitFloorFraction = 0.25f;
+        [Tooltip("Modo Normal: un acierto siempre te deja como mínimo en esta fracción del tiempo máximo (0,10 = 10 %). Era 0,25 hasta el 11/11/2026: con eso la partida era casi infinita")]
+        [Range(0, 1)] public float normalHitFloorFraction = 0.1f;
 
         [Header("Modo Normal: variantes de la muestra entre tamaños de cuadrícula")]
         [Tooltip("Tras los aciertos normales de cada tamaño llegan rondas con la muestra rayada y rondas de memoria")]
