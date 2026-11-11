@@ -21,6 +21,7 @@ namespace Colorify
         private Sfx sfx;
         private Music music;
         private Button menuOnline, menuRanking, menuSound;
+        private Image menuSoundIcon, menuBestPill;
 
         // Botones del menú según la plataforma. Con servidor propio, todo. En Playgama: Online solo con sus salas de
         // multijugador activadas, y Ranking solo si su clasificación está disponible (se sabe cuando su SDK responde).
@@ -32,15 +33,16 @@ namespace Colorify
             bool ranking = own || StorePlatform.HasInGameLeaderboard;
             menuOnline.gameObject.SetActive(online);
             menuRanking.gameObject.SetActive(ranking);
-            float rowY = online ? -430f : -200f;
-            // Fila de abajo: RANKING (si hay), COLLECTION y SOUND
+            // Columna: PLAY, ONLINE, tarjeta NEXT y fila de abajo (RANKING y COLLECTION). Sin ONLINE, sube lo de debajo.
+            float lift = online ? 0f : 229f;
+            if (menuNext != null)
+                UIKit.Place((RectTransform)menuNext.transform, 0.5f, 0.5f, new Vector2(850, 145), new Vector2(0, -412 + lift));
             var row = new List<Button>();
             if (ranking) row.Add(menuRanking);
             if (menuCollection != null) row.Add(menuCollection);
-            row.Add(menuSound);
-            float w = row.Count >= 3 ? 310f : 400f, step = w + 25f;
+            float w = 425f, step = w + 40f;
             for (int i = 0; i < row.Count; i++)
-                UIKit.Place((RectTransform)row[i].transform, 0.5f, 0.5f, new Vector2(w, 110), new Vector2((i - (row.Count - 1) * 0.5f) * step, rowY));
+                UIKit.Place((RectTransform)row[i].transform, 0.5f, 0.5f, new Vector2(w, 145), new Vector2((i - (row.Count - 1) * 0.5f) * step, -767 + lift));
             if (onlineLbButton != null) onlineLbButton.gameObject.SetActive(ranking);
         }
         private Ads ads;
@@ -140,26 +142,35 @@ namespace Colorify
 
         private void BuildOverlays()
         {
-            // --- Menú ---
-            v.menu = v.Overlay("Menu", 0.78f);
-            var title = UIKit.Text("Title", v.menu.transform, ColorifyView.RainbowTitle("COLORIFY"), 96, UIKit.Ink, black: true);
-            UIKit.Place(title.rectTransform, 0.5f, 0.5f, new Vector2(1000, 130), new Vector2(0, 400));
-            var tag = UIKit.Text("Tagline", v.menu.transform, "Tap the matching color. Fast.", 46, UIKit.InkSoft);
-            UIKit.Place(tag.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 300));
-            v.menuBest = UIKit.Text("Best", v.menu.transform, "", 40, UIKit.Ink, black: true);
-            UIKit.Place(v.menuBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 205));
+            // --- Menú (diseño «mate premium» del 11/11/2026: medidas del lienzo × 2,5) ---
+            v.menu = v.Overlay("Menu", 1f);   // opaco: ya no se ve el HUD de la partida detrás
+            BuildMenuDecor(v.menu.transform);
+            BuildLogo(v.menu.transform, new Vector2(0f, 605f));
+            var tag = UIKit.Text("Tagline", v.menu.transform, "Tap the matching color. Fast.", 40, UIKit.InkSoft);
+            UIKit.Place(tag.rectTransform, 0.5f, 0.5f, new Vector2(1000, 60), new Vector2(0, 482));
+            menuBestPill = UIKit.Box("BestPill", v.menu.transform, UIKit.PaperDark, 1.2f);
+            UIKit.Place(menuBestPill.rectTransform, 0.5f, 0.5f, new Vector2(380, 85), new Vector2(0, 377));
+            var trophy = UIKit.Icon("trophy", menuBestPill.transform, 44f);
+            UIKit.Place(trophy.rectTransform, 0f, 0.5f, new Vector2(44, 44), new Vector2(52, 0));
+            v.menuBest = UIKit.Text("Best", menuBestPill.transform, "", 36, UIKit.Ink, black: true);
+            UIKit.Stretch(v.menuBest.rectTransform);
+            v.menuBest.rectTransform.offsetMin = new Vector2(84, 0);
+            v.menuBest.rectTransform.offsetMax = new Vector2(-24, 0);
+            v.menuBest.characterSpacing = 5;
+            v.menuBest.enableAutoSizing = true; v.menuBest.fontSizeMin = 22f; v.menuBest.fontSizeMax = 36f;
             // Modos: Normal (puntos y tiempo) y Online. El modo Supervivencia (rondas y cartas) ya no sale en el
             // menú: su código sigue en el proyecto por si se recupera.
-            var normalBtn = UIKit.Button("Normal", v.menu.transform, "PLAY", ColorifyView.TitleColors[3], new Vector2(660, 180), () => StartRun(Mode.Normal), 84);
-            UIKit.Place((RectTransform)normalBtn.transform, 0.5f, 0.5f, new Vector2(660, 180), new Vector2(0, 40));
-            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE", ColorifyView.TitleColors[2], new Vector2(620, 140), ShowOnline, 66);
-            UIKit.Place((RectTransform)onlineBtn.transform, 0.5f, 0.5f, new Vector2(620, 140), new Vector2(0, -170));
-            var best = UIKit.Button("Ranking", v.menu.transform, "RANKING", ColorifyView.TitleColors[1], new Vector2(400, 110), () => ShowLeaderboard("points"), 46);
-            UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, -430));
-            var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
-            UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(215, -430));
-            menuCollection = UIKit.Button("Collection", v.menu.transform, "COLLECTION", ColorifyView.TitleColors[4], new Vector2(400, 110), ShowCollection, 40);
-            v.menuSoundLabel = sound.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            var normalBtn = UIKit.Button("Normal", v.menu.transform, "PLAY", ColorifyView.TitleColors[3], new Vector2(750, 215), () => StartRun(Mode.Normal), 95);
+            UIKit.Place((RectTransform)normalBtn.transform, 0.5f, 0.5f, new Vector2(750, 215), new Vector2(0, 27));
+            var onlineBtn = UIKit.Button("Online", v.menu.transform, "ONLINE", ColorifyView.TitleColors[2], new Vector2(670, 155), ShowOnline, 62);
+            UIKit.Place((RectTransform)onlineBtn.transform, 0.5f, 0.5f, new Vector2(670, 155), new Vector2(0, -202));
+            var best = UIKit.Button("Ranking", v.menu.transform, "RANKING", ColorifyView.TitleColors[1], new Vector2(425, 145), () => ShowLeaderboard("points"), 42);
+            // Sonido: botón con icono arriba a la derecha (frente al perfil)
+            var sound = UIKit.Button("Sound", v.menu.transform, "", UIKit.PaperLight, new Vector2(120, 120), ToggleSound, 40);
+            UIKit.Place((RectTransform)sound.transform, 1f, 1f, new Vector2(120, 120), new Vector2(-100, -105));
+            menuSoundIcon = UIKit.Icon(save.soundOn ? "audioOn" : "audioOff", sound.transform, 64f);
+            UIKit.Place(menuSoundIcon.rectTransform, 0.5f, 0.5f, new Vector2(64, 64), new Vector2(0, UIKit.DepthUnits(0.6f) * 0.5f));
+            menuCollection = UIKit.Button("Collection", v.menu.transform, "COLLECTION", ColorifyView.TitleColors[4], new Vector2(425, 145), ShowCollection, 42);
             menuOnline = onlineBtn;
             menuRanking = best;
             menuSound = sound;
@@ -180,8 +191,10 @@ namespace Colorify
             var quit = UIKit.Button("Quit", v.pause.transform, "QUIT RUN", ColorifyView.TitleColors[5], new Vector2(560, 120), QuitRun, 50);
             UIKit.Place((RectTransform)quit.transform, 0.5f, 0.5f, new Vector2(560, 120), new Vector2(0, -330));
 
-            pauseButton = UIKit.Button("PauseButton", v.game, "II", UIKit.PaperDark, new Vector2(120, 110), Pause, 54);
-            UIKit.Place((RectTransform)pauseButton.transform, 0f, 1f, new Vector2(120, 110), new Vector2(105, -110));
+            pauseButton = UIKit.Button("PauseButton", v.game, "", UIKit.PaperLight, new Vector2(120, 120), Pause, 54);
+            UIKit.Place((RectTransform)pauseButton.transform, 0f, 1f, new Vector2(120, 120), new Vector2(100, -105));
+            var pauseIcon = UIKit.Icon("pause", pauseButton.transform, 58f);
+            UIKit.Place(pauseIcon.rectTransform, 0.5f, 0.5f, new Vector2(58, 58), new Vector2(0, UIKit.DepthUnits(0.6f) * 0.5f));
 
             // --- Cartas ---
             v.cards = v.Overlay("Cards");
@@ -211,28 +224,55 @@ namespace Colorify
             v.nextSkip = UIKit.Button("Skip", v.nextRound.transform, "SKIP · +1 CARD PICK LATER", UIKit.PaperDark, new Vector2(760, 120), SkipRound, 44);
             UIKit.Place((RectTransform)v.nextSkip.transform, 0.5f, 0.5f, new Vector2(760, 120), new Vector2(0, -260));
 
-            // --- Fin de partida ---
-            v.gameOver = v.Overlay("GameOver");
-            var got = UIKit.Text("Title", v.gameOver.transform, "RUN OVER", 120, UIKit.Ink, black: true);
-            UIKit.Place(got.rectTransform, 0.5f, 0.5f, new Vector2(1000, 150), new Vector2(0, 640));
-            v.overScore = UIKit.Text("Score", v.gameOver.transform, "", 150, UIKit.Ink, black: true);
-            UIKit.Place(v.overScore.rectTransform, 0.5f, 0.5f, new Vector2(1000, 180), new Vector2(0, 470));
-            v.overBest = UIKit.Text("Best", v.gameOver.transform, "", 48, UIKit.InkSoft, black: true);
-            UIKit.Place(v.overBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 360));
-            v.overInfo = UIKit.Text("Info", v.gameOver.transform, "", 44, UIKit.InkSoft);
-            UIKit.Place(v.overInfo.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 280));
-            overUnlock = UIKit.Text("Unlock", v.gameOver.transform, "", 38, UIKit.Ink, black: true);
-            UIKit.Place(overUnlock.rectTransform, 0.5f, 0.5f, new Vector2(1000, 110), new Vector2(0, 180));
+            // --- Fin de partida (diseño del 11/11/2026): tarjeta con puntos, récord, datos y desbloqueo; botones debajo ---
+            v.gameOver = v.Overlay("GameOver", 0.97f);
+            var overCard = UIKit.Card("Card", v.gameOver.transform, UIKit.PaperLight, 0.45f);
+            UIKit.Place(overCard.rectTransform, 0.5f, 0.5f, new Vector2(960, 745), new Vector2(0, 472));
+            var got = UIKit.Text("Title", v.gameOver.transform, "RUN OVER", 38, UIKit.InkSoft, black: true);
+            UIKit.Place(got.rectTransform, 0.5f, 0.5f, new Vector2(900, 60), new Vector2(0, 768));
+            got.characterSpacing = 20;
+            v.overScore = UIKit.Text("Score", v.gameOver.transform, "", 170, UIKit.Ink, black: true);
+            UIKit.Place(v.overScore.rectTransform, 0.5f, 0.5f, new Vector2(900, 190), new Vector2(0, 640));
+            v.overScore.enableAutoSizing = true; v.overScore.fontSizeMin = 90f; v.overScore.fontSizeMax = 170f;
+            v.overScore.enableWordWrapping = false;
+            overBestPill = UIKit.Card("BestPill", v.gameOver.transform, ColorifyView.TitleColors[3], 0.9f);
+            UIKit.Place(overBestPill.rectTransform, 0.5f, 0.5f, new Vector2(330, 80), new Vector2(0, 520));
+            overBestPill.rectTransform.localRotation = Quaternion.Euler(0, 0, -3f);
+            v.overBest = UIKit.Text("Best", v.gameOver.transform, "", 34, UIKit.InkSoft, black: true);
+            UIKit.Place(v.overBest.rectTransform, 0.5f, 0.5f, new Vector2(880, 60), new Vector2(0, 524));
+            v.overBest.characterSpacing = 5;
+            v.overBest.enableAutoSizing = true; v.overBest.fontSizeMin = 22f; v.overBest.fontSizeMax = 34f;
+            v.overInfo = UIKit.Text("Info", v.gameOver.transform, "", 40, UIKit.InkSoft);
+            UIKit.Place(v.overInfo.rectTransform, 0.5f, 0.5f, new Vector2(880, 70), new Vector2(0, 405));
+            for (int i = 0; i < 3; i++)
+            {
+                var chip = UIKit.Box("Stat" + i, v.gameOver.transform, UIKit.WithAlpha(UIKit.PaperDark, 0.6f), 0.55f);
+                UIKit.Place(chip.rectTransform, 0.5f, 0.5f, new Vector2(275, 145), new Vector2((i - 1) * 295f, 405));
+                overStatValue[i] = UIKit.Text("Value", chip.transform, "", 60, UIKit.Ink, black: true);
+                UIKit.Place(overStatValue[i].rectTransform, 0.5f, 0.5f, new Vector2(260, 70), new Vector2(0, 18));
+                overStatLabel[i] = UIKit.Text("Label", chip.transform, "", 26, UIKit.InkSoft, black: true);
+                UIKit.Place(overStatLabel[i].rectTransform, 0.5f, 0.5f, new Vector2(260, 40), new Vector2(0, -38));
+                overStatLabel[i].characterSpacing = 8;
+                overStatLabel[i].enableAutoSizing = true; overStatLabel[i].fontSizeMin = 16f; overStatLabel[i].fontSizeMax = 26f;
+                overStat[i] = chip;
+            }
+            overUnlockStrip = UIKit.Card("Unlock", v.gameOver.transform, UIKit.WithAlpha(ColorifyView.TitleColors[2], 0.3f), 0.55f);
+            UIKit.Place(overUnlockStrip.rectTransform, 0.5f, 0.5f, new Vector2(860, 150), new Vector2(0, 228));
+            overUnlock = UIKit.Text("Unlock", overUnlockStrip.transform, "", 34, UIKit.Ink, black: true);
+            UIKit.Stretch(overUnlock.rectTransform);
+            overUnlock.rectTransform.offsetMin = new Vector2(30, UIKit.DepthUnits(0.55f));
+            overUnlock.rectTransform.offsetMax = new Vector2(-30, 0);
+            overUnlock.enableAutoSizing = true; overUnlock.fontSizeMin = 20f; overUnlock.fontSizeMax = 34f;
             v.overCardsRow = UIKit.Rect("Cards", v.gameOver.transform);
-            UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
-            v.overContinue = UIKit.Button("Continue", v.gameOver.transform, ContinueLabel, ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
-            UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(820, 150), new Vector2(0, 10));
+            UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 228));
+            v.overContinue = UIKit.Button("Continue", v.gameOver.transform, ContinueLabel, ColorifyView.TitleColors[0], new Vector2(850, 145), ContinueWithAd, 45);
+            UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(850, 145), new Vector2(0, -242));
             // En los portales, al salir de la pantalla de fin de partida puede tocar un intersticial (la capa de
             // publicación decide: nunca en partida, como mucho uno cada 3 minutos)
-            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); var m = mode; StorePlatform.ShowInterstitial("game_over", () => StartRun(m), overNearRecord); }, 70);
-            UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, -180));
-            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { if (StorePlatform.AdShowing) return; bool first = firstRun; FinishRun("lose"); if (first) ShowMenu(); else StorePlatform.ShowInterstitial("game_over", () => ShowMenu(), overNearRecord); }, 50);
-            UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -350));
+            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(750, 195), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); var m = mode; StorePlatform.ShowInterstitial("game_over", () => StartRun(m), overNearRecord); }, 75);
+            UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(750, 195), new Vector2(0, -452));
+            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperLight, new Vector2(450, 130), () => { if (StorePlatform.AdShowing) return; bool first = firstRun; FinishRun("lose"); if (first) ShowMenu(); else StorePlatform.ShowInterstitial("game_over", () => ShowMenu(), overNearRecord); }, 42);
+            UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(450, 130), new Vector2(0, -655));
             overAgain = again;
             overMenu = toMenu;
 
@@ -316,7 +356,8 @@ namespace Colorify
             LeaveOnline(instant);
             var bests = new List<string>();
             if (save.bestNormalPoints > 0) bests.Add($"{UIKit.Thousands(save.bestNormalPoints)} PTS");
-            v.menuBest.text = bests.Count > 0 ? "BEST  ·  " + string.Join("   ·   ", bests) : "";
+            v.menuBest.text = save.bestNormalPoints > 0 ? "BEST " + UIKit.Thousands(save.bestNormalPoints) : "";
+            if (menuBestPill != null) menuBestPill.gameObject.SetActive(save.bestNormalPoints > 0);
             RefreshMenuCollection();
             v.multChip.gameObject.SetActive(true);
             v.roundLabel.text = "";
@@ -982,7 +1023,7 @@ namespace Colorify
             fr.offsetMin = fr.offsetMax = Vector2.zero;
             bool low = frac < 0.25f && state == State.Playing;
             if (low) v.timerFill.color = Color.Lerp(UIKit.Danger, UIKit.Ink, 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 14f));
-            else v.timerFill.color = UIKit.Ink;
+            else v.timerFill.color = ColorifyView.TitleColors[2];
         }
 
         // =====================================================================
@@ -1167,6 +1208,9 @@ namespace Colorify
             ColorifyView.MiniCards(v.overCardsRow, ids, cfg);
             if (overUnlock != null) overUnlock.text = "";
             ApplyFirstRunOverButtons(false);
+            SetOverBest(v.overBest.text, isRecord);
+            SetOverStats();
+            SyncUnlockStrip();
 
             bool nearRecord = save.bestScore > 0 && run.totalScore >= save.bestScore * cfg.continueNearRecordFraction;
             bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
@@ -1193,6 +1237,9 @@ namespace Colorify
             if (!isRecord && nearRecord)
                 v.overBest.text = $"ONLY {UIKit.Thousands(save.bestNormalPoints - normal.points)} PTS FROM YOUR BEST!";
             overNearRecord = nearRecord || isRecord;
+            SetOverBest(v.overBest.text, isRecord);
+            SetOverStats(UIKit.Thousands(normal.hits), "HITS", "×" + normal.bestChain, "BEST COMBO", normal.misses.ToString(), "MISSES");
+            SyncUnlockStrip();
             bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
             // Cerca del récord el «continuar» se ofrece siempre; a quien acepta casi siempre, hasta dos veces por partida
             int maxContinues = save.continueOffers >= 4 && save.continueAccepts >= 0.75f * save.continueOffers ? 2 : 1;
@@ -1393,6 +1440,7 @@ namespace Colorify
         {
             string s = save.soundOn ? "SOUND ON" : "SOUND OFF";
             if (v.menuSoundLabel != null) v.menuSoundLabel.text = s;
+            if (menuSoundIcon != null) menuSoundIcon.sprite = UIKit.IconSprite(save.soundOn ? "audioOn" : "audioOff");
             if (v.pauseSoundLabel != null) v.pauseSoundLabel.text = s;
             if (v.pauseVibrationLabel != null) v.pauseVibrationLabel.text = save.vibrationOn ? "VIBRATION ON" : "VIBRATION OFF";
         }

@@ -26,9 +26,10 @@ namespace Colorify
             public const float RefW = 1080f, RefH = 1920f;
             public const float BoardSize = 960f;
             public const float BoardBottom = 140f;      // margen inferior del tablero
-            public const float SwatchSize = 360f;
-            public const float SwatchY = -560f;         // desde el borde superior
-            public const float TimerY = -270f;
+            public const float SwatchSize = 320f;
+            public const float SwatchY = -590f;         // desde el borde superior
+            public const float SwatchCard = 56f;        // marco de la tarjeta de la muestra (diseño del 11/11/2026)
+            public const float TimerY = -280f;
         }
 
         public Canvas canvas;
@@ -103,30 +104,44 @@ namespace Colorify
 
         private void BuildHud()
         {
-            roundLabel = UIKit.Text("Round", game, "ROUND 1-1", 40, UIKit.InkSoft, black: true);
-            UIKit.Place(roundLabel.rectTransform, 0.5f, 1f, new Vector2(600, 60), new Vector2(0, -70));
+            // Diseño «mate premium» (lienzo del 11/11/2026, medidas × 2,5): puntos arriba en grande con el récord debajo,
+            // multiplicador en pastilla oscura, barra de tiempo gruesa, muestra en una tarjeta y tablero en una bandeja
+            roundLabel = UIKit.Text("Round", game, "ROUND 1-1", 34, UIKit.InkSoft, black: true);
+            UIKit.Place(roundLabel.rectTransform, 0.5f, 1f, new Vector2(600, 50), new Vector2(0, -38));
             roundLabel.characterSpacing = 8;
 
-            scoreText = UIKit.Text("Score", game, "0 / 250", 92, UIKit.Ink, black: true);
-            UIKit.Place(scoreText.rectTransform, 0.5f, 1f, new Vector2(760, 110), new Vector2(0, -150));
+            scoreText = UIKit.Text("Score", game, "0 / 250", 108, UIKit.Ink, black: true);
+            UIKit.Place(scoreText.rectTransform, 0.5f, 1f, new Vector2(700, 125), new Vector2(0, -108));
+            scoreText.enableAutoSizing = true; scoreText.fontSizeMin = 60f; scoreText.fontSizeMax = 108f;
+            scoreText.enableWordWrapping = false;
 
-            totalText = UIKit.Text("Total", game, "TOTAL 0", 34, UIKit.InkSoft);
-            UIKit.Place(totalText.rectTransform, 0.5f, 1f, new Vector2(600, 50), new Vector2(0, -218));
+            totalText = UIKit.Text("Total", game, "TOTAL 0", 30, UIKit.InkSoft, black: true);
+            UIKit.Place(totalText.rectTransform, 0.5f, 1f, new Vector2(600, 45), new Vector2(0, -182));
+            totalText.characterSpacing = 6;
 
-            multChip = UIKit.Box("Mult", game, UIKit.Ink, 0.5f);
-            UIKit.Place(multChip.rectTransform, 1f, 1f, new Vector2(190, 110), new Vector2(-125, -110));
-            multText = UIKit.Text("Label", multChip.transform, "x1", 64, UIKit.Paper, black: true);
+            multChip = UIKit.Card("Mult", game, UIKit.Ink, 0.6f);
+            UIKit.Place(multChip.rectTransform, 1f, 1f, new Vector2(170, 120), new Vector2(-125, -105));
+            multText = UIKit.Text("Label", multChip.transform, "x1", 62, UIKit.PaperLight, black: true);
             UIKit.Stretch(multText.rectTransform);
+            multText.rectTransform.offsetMin = new Vector2(0f, UIKit.DepthUnits(0.6f));
 
-            timerBack = UIKit.Box("Timer", game, UIKit.PaperDark, 2f);
-            UIKit.Place(timerBack.rectTransform, 0.5f, 1f, new Vector2(Layout.BoardSize, 28), new Vector2(0, Layout.TimerY));
-            timerFill = UIKit.Box("Fill", timerBack.transform, UIKit.Ink, 2f);
+            timerBack = UIKit.Box("Timer", game, UIKit.PaperDark, 1.2f);
+            UIKit.Place(timerBack.rectTransform, 0.5f, 1f, new Vector2(Layout.BoardSize, 40), new Vector2(0, Layout.TimerY));
+            timerFill = UIKit.Box("Fill", timerBack.transform, ColorifyView.TitleColors[2], 1.2f);
             var fr = timerFill.rectTransform;
             fr.anchorMin = Vector2.zero; fr.anchorMax = Vector2.one; fr.pivot = new Vector2(0f, 0.5f);
             fr.offsetMin = fr.offsetMax = Vector2.zero;
 
-            swatchShadow = UIKit.Box("SwatchShadow", game, UIKit.PaperDark, 0.35f);
-            UIKit.Place(swatchShadow.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY - 14));
+            var match = UIKit.Text("Match", game, "MATCH THIS", 30, UIKit.InkSoft, black: true);
+            UIKit.Place(match.rectTransform, 0.5f, 1f, new Vector2(600, 45), new Vector2(0, Layout.SwatchY + Layout.SwatchSize * 0.5f + Layout.SwatchCard * 0.5f + 42f));
+            match.characterSpacing = 14;
+            // Tarjeta clara con relieve que enmarca la muestra (la cara queda centrada en la muestra)
+            float cardDepth = UIKit.DepthUnits(0.35f);
+            var card = UIKit.Card("SwatchCard", game, UIKit.PaperLight, 0.35f);
+            UIKit.Place(card.rectTransform, 0.5f, 1f, new Vector2(Layout.SwatchSize + Layout.SwatchCard, Layout.SwatchSize + Layout.SwatchCard + cardDepth),
+                new Vector2(0, Layout.SwatchY - cardDepth * 0.5f));
+            swatchShadow = UIKit.Box("SwatchShadow", game, UIKit.WithAlpha(UIKit.Ink, 0.10f), 0.35f);
+            UIKit.Place(swatchShadow.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY - 10));
             swatch = UIKit.Box("Swatch", game, Color.white, 0.35f);
             UIKit.Place(swatch.rectTransform, 0.5f, 1f, Vector2.one * Layout.SwatchSize, new Vector2(0, Layout.SwatchY));
             swatchBase = swatch.rectTransform.anchoredPosition;
@@ -266,7 +281,7 @@ namespace Colorify
         {
             if (shape == Shape.Square)
             {
-                img.sprite = UIKit.Rounded;
+                img.sprite = UIKit.Depth;   // casillas y muestra con relieve
                 img.type = Image.Type.Sliced;
                 img.pixelsPerUnitMultiplier = squareRadius;
                 img.preserveAspect = false;
@@ -318,6 +333,9 @@ namespace Colorify
 
         private void BuildBoard()
         {
+            // Bandeja hundida bajo las casillas
+            var tray = UIKit.Box("Tray", game, UIKit.PaperDark, 0.45f);
+            UIKit.Place(tray.rectTransform, 0.5f, 0f, Vector2.one * Layout.BoardSize, new Vector2(0, Layout.BoardBottom + Layout.BoardSize * 0.5f));
             board = UIKit.Rect("Board", game);
             UIKit.Place(board, 0.5f, 0f, Vector2.one * Layout.BoardSize, new Vector2(0, Layout.BoardBottom + Layout.BoardSize * 0.5f));
 

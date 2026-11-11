@@ -23,15 +23,16 @@ namespace Colorify
         private string menuProfileEmblemId;
         private string forceCollectionTab;   // ShowCollection abre esta pestaña (una vez)
 
-        private const float ProfileChipW = 440f, ProfileChipH = 100f, ProfileEmblemSize = 68f;
+        private const float ProfileChipW = 460f, ProfileChipH = 120f, ProfileEmblemSize = 85f;   // diseño del 11/11/2026
 
         private void BuildMenuProfile()
         {
-            menuProfile = UIKit.Button("Profile", v.menu.transform, "", UIKit.WithAlpha(UIKit.PaperDark, 0.95f), new Vector2(ProfileChipW, ProfileChipH), ProfileAction, 40);
-            UIKit.Place((RectTransform)menuProfile.transform, 0f, 1f, new Vector2(ProfileChipW, ProfileChipH), new Vector2(40f + ProfileChipW * 0.5f, -110f));
+            menuProfile = UIKit.Button("Profile", v.menu.transform, "", UIKit.PaperLight, new Vector2(ProfileChipW, ProfileChipH), ProfileAction, 40);
+            UIKit.Place((RectTransform)menuProfile.transform, 0f, 1f, new Vector2(ProfileChipW, ProfileChipH), new Vector2(40f + ProfileChipW * 0.5f, -105f));
+            float d = UIKit.DepthUnits(0.6f);
 
             menuProfileEmblem = UIKit.Rect("EmblemSlot", menuProfile.transform);
-            UIKit.Place(menuProfileEmblem, 0f, 0.5f, new Vector2(ProfileEmblemSize, ProfileEmblemSize), new Vector2(18f + ProfileEmblemSize * 0.5f, 0f));
+            UIKit.Place(menuProfileEmblem, 0f, 0.5f, new Vector2(ProfileEmblemSize, ProfileEmblemSize), new Vector2(18f + ProfileEmblemSize * 0.5f, d * 0.5f));
 
             // El texto del botón hace de nombre: a la izquierda, junto al emblema, con tamaño automático limitado
             menuProfileName = menuProfile.GetComponentInChildren<TextMeshProUGUI>();
@@ -42,8 +43,8 @@ namespace Colorify
             menuProfileName.enableWordWrapping = false;
             menuProfileName.overflowMode = TextOverflowModes.Ellipsis;
             var rt = menuProfileName.rectTransform;
-            rt.offsetMin = new Vector2(18f + ProfileEmblemSize + 16f, 10f);
-            rt.offsetMax = new Vector2(-22f, -10f);
+            rt.offsetMin = new Vector2(18f + ProfileEmblemSize + 20f, d + 6f);
+            rt.offsetMax = new Vector2(-26f, -6f);
 
             RefreshMenuProfile();
         }

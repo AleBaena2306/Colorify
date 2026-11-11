@@ -235,11 +235,13 @@ namespace Colorify
             bool guide = first && !save.collectionCoachDone;
             overAgain.gameObject.SetActive(!guide);
             var rt = (RectTransform)overMenu.transform;
-            UIKit.Place(rt, 0.5f, 0.5f, guide ? new Vector2(560, 160) : new Vector2(420, 120), new Vector2(0, guide ? -180 : -350));
+            UIKit.Place(rt, 0.5f, 0.5f, guide ? new Vector2(750, 195) : new Vector2(450, 130), new Vector2(0, guide ? -452 : -655));
             var img = overMenu.GetComponent<Image>();
-            if (img != null) img.color = guide ? ColorifyView.TitleColors[3] : UIKit.PaperDark;
-            var label = overMenu.GetComponentInChildren<TextMeshProUGUI>();
-            if (label != null) { label.text = guide ? "NEXT" : "MENU"; label.fontSize = guide ? 70 : 50; }
+            if (img != null) img.color = guide ? ColorifyView.TitleColors[3] : UIKit.PaperLight;
+            var label = overMenu.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null) { label.text = guide ? "NEXT" : "MENU"; label.fontSize = guide ? 75 : 42; }
+            var icon = overMenu.transform.Find("Content/Icon");
+            if (icon != null) icon.gameObject.SetActive(!guide);
         }
 
         private void CloseCoach()

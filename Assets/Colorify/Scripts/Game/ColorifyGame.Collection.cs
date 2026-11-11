@@ -14,7 +14,8 @@ namespace Colorify
         private RectTransform collectionList;
         private TextMeshProUGUI collectionSub, overUnlock;
         private Button menuCollection, menuNext;
-        private TextMeshProUGUI menuNextText;
+        private TextMeshProUGUI menuNextText, menuNextValue;
+        private Image menuNextSwatch, menuNextFill;
         private RectTransform menuNewBadge;
         private ColorifyConfig soloColors;
         private int soloColorsCount = -1;
@@ -52,7 +53,7 @@ namespace Colorify
 
         private static Color[] Palette()
         {
-            var p = new List<Color> { UIKit.Paper, UIKit.PaperDark, UIKit.Ink, UIKit.InkSoft, UIKit.Danger };
+            var p = new List<Color> { UIKit.Paper, UIKit.PaperDark, UIKit.PaperLight, UIKit.Ink, UIKit.InkSoft, UIKit.Danger };
             p.AddRange(ColorifyView.TitleColors);
             return p.ToArray();
         }
@@ -118,9 +119,31 @@ namespace Colorify
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
             // Menú: lo siguiente que se desbloquea, con barra de progreso, y aviso NEW en el botón COLLECTION
-            menuNext = UIKit.Button("Next", v.menu.transform, "", UIKit.PaperDark, new Vector2(760, 64), ShowCollection, 30);
-            UIKit.Place((RectTransform)menuNext.transform, 0.5f, 0.5f, new Vector2(760, 64), new Vector2(0, 152));
+            // Tarjeta NEXT (diseño del 11/11/2026): muestra del desbloqueo, nombre, puntos y barra de progreso
+            menuNext = UIKit.Button("Next", v.menu.transform, "", UIKit.PaperLight, new Vector2(850, 145), ShowCollection, 30);
+            UIKit.Place((RectTransform)menuNext.transform, 0.5f, 0.5f, new Vector2(850, 145), new Vector2(0, -412));
+            float nd = UIKit.DepthUnits(0.6f) * 0.5f;
+            menuNextSwatch = UIKit.Card("Swatch", menuNext.transform, ColorifyView.TitleColors[4], 1.4f);
+            UIKit.Place(menuNextSwatch.rectTransform, 0f, 0.5f, new Vector2(85, 85 + UIKit.DepthUnits(1.4f)), new Vector2(35f + 42.5f, nd));
             menuNextText = menuNext.GetComponentInChildren<TextMeshProUGUI>();
+            var nrt = menuNextText.rectTransform;
+            nrt.anchorMin = new Vector2(0f, 0.5f); nrt.anchorMax = new Vector2(1f, 0.5f);
+            nrt.offsetMin = new Vector2(150f, nd + 2f); nrt.offsetMax = new Vector2(-260f, nd + 46f);
+            menuNextText.alignment = TextAlignmentOptions.Left;
+            menuNextText.fontSize = 30f; menuNextText.enableAutoSizing = true; menuNextText.fontSizeMin = 18f; menuNextText.fontSizeMax = 30f;
+            menuNextText.enableWordWrapping = false;
+            menuNextValue = UIKit.Text("Value", menuNext.transform, "", 30, UIKit.InkSoft, black: true);
+            var vrt = menuNextValue.rectTransform;
+            vrt.anchorMin = new Vector2(0f, 0.5f); vrt.anchorMax = new Vector2(1f, 0.5f);
+            vrt.offsetMin = new Vector2(150f, nd + 2f); vrt.offsetMax = new Vector2(-35f, nd + 46f);
+            menuNextValue.alignment = TextAlignmentOptions.Right;
+            menuNextValue.enableAutoSizing = true; menuNextValue.fontSizeMin = 18f; menuNextValue.fontSizeMax = 30f;
+            var bar = UIKit.Box("Bar", menuNext.transform, UIKit.PaperDark, 2.5f);
+            var brt = bar.rectTransform;
+            brt.anchorMin = new Vector2(0f, 0.5f); brt.anchorMax = new Vector2(1f, 0.5f);
+            brt.offsetMin = new Vector2(150f, nd - 36f); brt.offsetMax = new Vector2(-35f, nd - 11f);
+            menuNextFill = UIKit.Box("Fill", bar.transform, ColorifyView.TitleColors[4], 2.5f);
+            UIKit.Stretch(menuNextFill.rectTransform);
             if (menuCollection != null)
             {
                 var badge = UIKit.Box("New", menuCollection.transform, ColorifyView.TitleColors[5], 2f);
@@ -146,8 +169,12 @@ namespace Colorify
             menuNext.gameObject.SetActive(next != null && save.normalRunsPlayed > 0);
             if (next != null)
             {
-                menuNextText.text = $"NEXT UNLOCK: {next.name.ToUpperInvariant()} {Collection.KindLabel(next)}  ·  " +
-                                    $"<color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{UIKit.Thousands(life)} / {UIKit.Thousands(next.cost)}</color>";
+                menuNextText.text = $"NEXT · {next.name.ToUpperInvariant()} {Collection.KindLabel(next)}";
+                menuNextValue.text = $"{UIKit.Thousands(life)} / {UIKit.Thousands(next.cost)}";
+                menuNextSwatch.color = ItemColor(next);
+                var frt = menuNextFill.rectTransform;
+                frt.anchorMax = new Vector2(Mathf.Clamp01(next.cost > 0 ? (float)life / next.cost : 1f), 1f);
+                frt.offsetMin = frt.offsetMax = Vector2.zero;
             }
             bool fresh = AnyNew(life, Collection.Kind.Theme, Collection.Kind.Color, Collection.Kind.Emblem, Collection.Kind.NameColor) || HasUnseenAwards;
             if (menuNewBadge != null)
@@ -353,7 +380,7 @@ namespace Colorify
                 var names = new List<string>();
                 foreach (var it in news) names.Add($"{it.name.ToUpperInvariant()} {Collection.KindLabel(it)}");
                 overUnlock.text = ColorifyView.RainbowTitle("UNLOCKED: ") + string.Join(" · ", names) + "!\n<size=75%>TAP TO SEE IT</size>";
-                juice.PopIn(overUnlock.transform, 0.2f, 0.35f, 1.3f);
+                juice.PopIn(overUnlockStrip != null ? overUnlockStrip.transform : overUnlock.transform, 0.2f, 0.35f, 1.3f);
                 sfx.Play(Sfx.Id.Card);
                 return;
             }

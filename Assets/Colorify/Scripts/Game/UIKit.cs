@@ -17,6 +17,8 @@ namespace Colorify
         public static Color Ink = new Color32(0x3B, 0x38, 0x36, 0xFF);       // texto
         public static Color InkSoft = new Color32(0x8A, 0x84, 0x7D, 0xFF);
         public static Color Danger = new Color32(0xD9, 0x6C, 0x5F, 0xFF);
+        // Papel claro (tarjetas y botones secundarios): se deriva del papel del tema
+        public static Color PaperLight => Color.Lerp(Paper, Color.white, 0.55f);
 
         private static Sprite rounded;
         private static TMP_FontAsset fontBold, fontBlack;
@@ -28,6 +30,109 @@ namespace Colorify
                 if (rounded == null) rounded = MakeRounded(64, 22);
                 return rounded;
             }
+        }
+
+        // Ficha con relieve (diseño «mate premium», 11/11/2026): cara arriba y un canto más oscuro abajo, como los
+        // botones «depth» de Kenney pero sin contorno. Blanca: se tiñe con el color del botón y el canto sale más oscuro.
+        public const int DepthPx = 8;
+        private static Sprite depth;
+        public static Sprite Depth
+        {
+            get
+            {
+                if (depth == null) depth = MakeDepth(64, 22, DepthPx, 0.8f);
+                return depth;
+            }
+        }
+        // Alto del canto en unidades de UI para una pieza con ese radiusScale
+        public static float DepthUnits(float radiusScale) => DepthPx / Mathf.Max(0.01f, radiusScale);
+
+        private static Sprite MakeDepth(int size, int radius, int dpx, float edge)
+        {
+            int w = size, h = size + dpx;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            var px = new Color32[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    // y = 0 es la fila de abajo. Canto: filas 0..size; cara: filas dpx..h (por encima del canto)
+                    float aEdge = RoundedAlpha(x, y, size, radius);
+                    float aFace = RoundedAlpha(x, y - dpx, size, radius);
+                    float a = aFace + aEdge * (1f - aFace);
+                    float shade = a > 0f ? (aFace + aEdge * (1f - aFace) * edge) / a : 1f;
+                    byte v = (byte)(Mathf.Clamp01(shade) * 255f);
+                    px[y * w + x] = new Color32(v, v, v, (byte)(Mathf.Clamp01(a) * 255f));
+                }
+            tex.SetPixels32(px);
+            tex.Apply(false, true);
+            // Bordes del 9-slice: izquierda, abajo (radio + canto), derecha, arriba
+            return Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect,
+                new Vector4(radius, radius + dpx, radius, radius));
+        }
+
+        private static float RoundedAlpha(int x, int y, int size, int radius)
+        {
+            if (y < 0 || y >= size) return 0f;
+            float cx = Mathf.Clamp(x + 0.5f, radius, size - radius);
+            float cy = Mathf.Clamp(y + 0.5f, radius, size - radius);
+            float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(cx, cy));
+            return Mathf.Clamp01(radius - d + 0.5f);
+        }
+
+        // Tarjeta o ficha con relieve
+        public static Image Card(string name, Transform parent, Color color, float radiusScale = 0.6f, bool raycast = false)
+        {
+            var img = Box(name, parent, color, radiusScale, raycast);
+            img.sprite = Depth;
+            return img;
+        }
+
+        // ---------------- Iconos (Kenney Game Icons, CC0: Resources/UI/Icons, blancos; se tiñen de tinta) ----------------
+        private static readonly Dictionary<string, Sprite> icons = new Dictionary<string, Sprite>();
+
+        public static Sprite IconSprite(string name)
+        {
+            if (icons.TryGetValue(name, out var s)) return s;
+            s = Resources.Load<Sprite>("UI/Icons/" + name);
+            if (s == null)
+            {
+                var t = Resources.Load<Texture2D>("UI/Icons/" + name);
+                if (t != null) s = Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), 100f);
+            }
+            icons[name] = s;
+            return s;
+        }
+
+        public static Image Icon(string name, Transform parent, float size)
+        {
+            var rt = Rect("Icon", parent);
+            rt.sizeDelta = Vector2.one * size;
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = IconSprite(name);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            img.color = WithAlpha(Ink, 0.82f);
+            var le = rt.gameObject.AddComponent<LayoutElement>();
+            le.minWidth = le.preferredWidth = le.minHeight = le.preferredHeight = size;
+            if (img.sprite == null) rt.gameObject.SetActive(false);
+            return img;
+        }
+
+        // Icono de cada botón según su texto (los demás botones van sin icono)
+        public static string IconFor(string label)
+        {
+            if (string.IsNullOrEmpty(label)) return null;
+            switch (label)
+            {
+                case "PLAY": case "RESUME": case "KEEP GOING": return "play";
+                case "ONLINE": return "multiplayer";
+                case "RANKING": return "leaderboard";
+                case "COLLECTION": return "star";
+                case "PLAY AGAIN": return "return";
+                case "MENU": case "QUIT RUN": return "home";
+                case "BACK": return "arrowLeft";
+            }
+            return label.StartsWith("WATCH AD") ? "video" : null;
         }
 
         public static TMP_FontAsset FontBold => fontBold != null ? fontBold : (fontBold = LoadFont("Fonts/Nunito-ExtraBold"));
@@ -119,15 +224,37 @@ namespace Colorify
             return t;
         }
 
+        // Botón con relieve; el contenido va sobre la cara (por encima del canto). Con icono (IconFor), icono + texto
+        // centrados en fila.
         public static Button Button(string name, Transform parent, string label, Color color, Vector2 size, System.Action onClick, float fontSize = 64f)
         {
-            var img = Box(name, parent, color, 0.6f, raycast: true);
+            var img = Card(name, parent, color, 0.6f, raycast: true);
             img.rectTransform.sizeDelta = size;
             var b = img.gameObject.AddComponent<Button>();
             b.targetGraphic = img;
             b.transition = Selectable.Transition.None;
-            var lbl = Text("Label", img.transform, label, fontSize, Ink, black: true);
-            Stretch(lbl.rectTransform);
+            float d = DepthUnits(0.6f);
+            string icon = IconFor(label);
+            if (icon == null)
+            {
+                var lbl = Text("Label", img.transform, label, fontSize, Ink, black: true);
+                Stretch(lbl.rectTransform);
+                lbl.rectTransform.offsetMin = new Vector2(0f, d);
+                lbl.characterSpacing = 3f;
+            }
+            else
+            {
+                var row = Stretch(Rect("Content", img.transform));
+                row.offsetMin = new Vector2(0f, d);
+                var h = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+                h.childAlignment = TextAnchor.MiddleCenter;
+                h.spacing = fontSize * 0.28f;
+                h.childControlWidth = h.childControlHeight = true;
+                h.childForceExpandWidth = h.childForceExpandHeight = false;
+                Icon(icon, row, fontSize * 0.92f);
+                var lbl = Text("Label", row, label, fontSize, Ink, black: true);
+                lbl.characterSpacing = 3f;
+            }
             b.onClick.AddListener(() => onClick?.Invoke());
             img.gameObject.AddComponent<PressScale>();
             return b;
