@@ -90,7 +90,7 @@ namespace Colorify
 
         private void BuildCollectionOverlay()
         {
-            collection = v.Overlay("Collection");
+            collection = v.Overlay("Collection", 1f);   // opaca: que no se transparente el menú ni el fin de partida
             var title = UIKit.Text("Title", collection.transform, ColorifyView.RainbowTitle("COLLECTION"), 104, UIKit.Ink, black: true);
             UIKit.Place(title.rectTransform, 0.5f, 1f, new Vector2(1000, 150), new Vector2(0, -150));
             collectionSub = UIKit.Text("Sub", collection.transform, "", 38, UIKit.InkSoft);
@@ -192,7 +192,7 @@ namespace Colorify
                 bool unlocked = Collection.IsUnlocked(it, life);
                 bool inUse = it.kind == Collection.Kind.Theme && it.theme.id == CurrentThemeId;
                 bool isNew = IsNew(it, life, seen);
-                var row = UIKit.Box("Item" + i, collectionList, inUse ? UIKit.WithAlpha(ColorifyView.TitleColors[3], 0.45f) : UIKit.WithAlpha(UIKit.PaperDark, unlocked ? 0.95f : 0.45f), 0.7f, raycast: true);
+                var row = UIKit.Box("Item" + i, collectionList, inUse ? UIKit.WithAlpha(ColorifyView.TitleColors[3], 0.45f) : UIKit.WithAlpha(UIKit.PaperDark, unlocked ? 0.95f : 0.55f), 0.7f, raycast: true);
                 UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(480, 92), new Vector2(x, -110 - i * 104));
                 if (isNew)
                 {
@@ -223,10 +223,12 @@ namespace Colorify
                 var name = UIKit.Text("Name", row.transform, it.name.ToUpperInvariant(), 36, unlocked ? UIKit.Ink : UIKit.InkSoft, black: true);
                 name.alignment = TextAlignmentOptions.Left;
                 UIKit.Place(name.rectTransform, 0f, 0.5f, new Vector2(330, 46), new Vector2(textX + 165, 14));
-                string state = !unlocked ? (it.kind == Collection.Kind.Theme ? $"{UIKit.Thousands(it.cost)} PTS · TAP TO PREVIEW" : $"{UIKit.Thousands(it.cost)} PTS")
+                string state = !unlocked ? (it.kind == Collection.Kind.Theme ? $"{UIKit.Thousands(it.cost)} PTS · PREVIEW" : $"{UIKit.Thousands(it.cost)} PTS")
                     : it.kind == Collection.Kind.Color ? "IN YOUR BOARDS" : inUse ? "IN USE" : "TAP TO USE";
                 var info = UIKit.Text("State", row.transform, state, 26, UIKit.InkSoft);
                 info.alignment = TextAlignmentOptions.Left;
+                info.enableAutoSizing = true; info.fontSizeMin = 16f; info.fontSizeMax = 26f;   // siempre en una línea
+                name.enableAutoSizing = true; name.fontSizeMin = 22f; name.fontSizeMax = 36f;
                 UIKit.Place(info.rectTransform, 0f, 0.5f, new Vector2(330, 36), new Vector2(textX + 165, -22));
 
                 if (it.kind == Collection.Kind.Theme && !inUse)
