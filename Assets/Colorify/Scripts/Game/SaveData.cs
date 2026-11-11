@@ -33,6 +33,7 @@ namespace Colorify
         public string theme = "paper";                           // tema de la interfaz elegido
         public int seenUnlocks;                                  // (antiguo) desbloqueos vistos por orden; ahora seenItems
         public List<string> seenItems = new List<string>();      // desbloqueos ya vistos en COLLECTION (aviso NEW)
+        public bool collectionCoachDone;                         // tutorial de COLLECTION tras la primera partida ya hecho
         public string emblem = "dot", nameColor = "ink";         // aspecto en el ranking (Emblems)
         public List<string> awards = new List<string>();         // emblemas de temporada ganados (los da el servidor)
         public List<string> seenAwards = new List<string>();     // los ya vistos (aviso NEW)

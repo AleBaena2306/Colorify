@@ -161,6 +161,7 @@ namespace Colorify
         private void ShowCollection()
         {
             sfx.Play(Sfx.Id.Click);
+            CompleteCollectionCoach();
             // Se abre en la pestaña de lo último nuevo (o en PROFILE)
             long life = LifetimeShown;
             collectionTab = HasUnseenAwards ? "profile" : collectionTab;

@@ -230,8 +230,10 @@ namespace Colorify
             // publicación decide: nunca en partida, como mucho uno cada 3 minutos)
             var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); var m = mode; StorePlatform.ShowInterstitial("game_over", () => StartRun(m), overNearRecord); }, 70);
             UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, -180));
-            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); StorePlatform.ShowInterstitial("game_over", () => ShowMenu(), overNearRecord); }, 50);
+            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { if (StorePlatform.AdShowing) return; bool first = firstRun; FinishRun("lose"); if (first) ShowMenu(); else StorePlatform.ShowInterstitial("game_over", () => ShowMenu(), overNearRecord); }, 50);
             UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -350));
+            overAgain = again;
+            overMenu = toMenu;
 
             // --- Victoria (primera ronda 8×8 superada) ---
             v.victory = v.Overlay("Victory");
@@ -324,6 +326,7 @@ namespace Colorify
             else Show(v.menu);
             if (attract != null) StopCoroutine(attract);
             attract = StartCoroutine(AttractLoop());
+            MaybeStartCollectionCoach();
         }
 
         private IEnumerator AttractLoop()
@@ -900,7 +903,7 @@ namespace Colorify
             if (playing != StorePlatform.GameplayActive) { if (playing) StorePlatform.GameplayStart(); else StorePlatform.GameplayStop(); }
             UpdateOnline();
             if (state == State.Playing && normal != null) normalPlayMs += Mathf.Min(Time.deltaTime, 0.1f) * 1000f;
-            if (PausePressed())
+            if (PausePressed() && !CoachActive)
             {
                 if (state == State.Paused) Resume();
                 else if ((state == State.Playing || state == State.Countdown) && mode != Mode.Race) Pause();
@@ -1161,6 +1164,7 @@ namespace Colorify
             foreach (var c in run.cards) ids.Add(c.Id(cfg));
             ColorifyView.MiniCards(v.overCardsRow, ids, cfg);
             if (overUnlock != null) overUnlock.text = "";
+            ApplyFirstRunOverButtons(false);
 
             bool nearRecord = save.bestScore > 0 && run.totalScore >= save.bestScore * cfg.continueNearRecordFraction;
             bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
@@ -1181,6 +1185,7 @@ namespace Colorify
             v.overInfo.text = $"{normal.hits} hits  ·  best combo x{normal.bestChain}  ·  {normal.misses} misses";
             ColorifyView.MiniCards(v.overCardsRow, null, cfg);
             ShowUnlockLine(normal.points);
+            ApplyFirstRunOverButtons(firstRun && mode == Mode.Normal);
             bool nearRecord = save.bestNormalPoints > 0 && normal.points >= save.bestNormalPoints * cfg.continueNearRecordFraction;
             // «Te faltaron X puntos»: el récord a la vista invita a otra partida
             if (!isRecord && nearRecord)
