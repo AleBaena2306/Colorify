@@ -180,6 +180,7 @@ namespace Colorify
             if (nameInput != null) nameInput.DeactivateInputField();
             Hide(nameEditor);
             onlineName.text = CurrentName;
+            RefreshMenuProfile();
             if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
         }
 
@@ -261,6 +262,7 @@ namespace Colorify
         {
             CloseDuel();   // la próxima conexión se presenta con el nombre nuevo
             onlineName.text = CurrentName;
+            RefreshMenuProfile();
             if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
             nameStatus.text = $"<color=#{ColorUtility.ToHtmlStringRGB(ColorifyView.TitleColors[2])}>Saved!</color>";
             juice.Punch(nameBox, 0.1f);

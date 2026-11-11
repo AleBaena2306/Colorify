@@ -103,6 +103,7 @@ namespace Colorify
             ShowMenu(instant: true);
             // Plataforma (portfolio, CrazyGames, Playgama, GameDistribution, itch.io): el portal puede pedir pausar
             StorePlatform.OnReady += ApplyPlatformMenu;
+            StorePlatform.OnReady += OnPlatformReadyProfile;
             StorePlatform.PlatformEvent += OnPlatformEvent;
             StorePlatform.Init();
             ApplyPlatformMenu();
@@ -255,6 +256,7 @@ namespace Colorify
 
             BuildOnlineOverlays();
             BuildCollectionOverlay();
+            BuildMenuProfile();
             ApplyPlatformMenu();
             RefreshToggles();
         }
@@ -326,7 +328,7 @@ namespace Colorify
             else Show(v.menu);
             if (attract != null) StopCoroutine(attract);
             attract = StartCoroutine(AttractLoop());
-            MaybeStartCollectionCoach();
+            MaybeStartMenuCoach();
         }
 
         private IEnumerator AttractLoop()

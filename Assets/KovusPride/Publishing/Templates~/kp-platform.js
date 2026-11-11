@@ -13,6 +13,7 @@
 //                              Métodos (Playgama): lb.entries {board} · mp.quick {max, filter} · mp.create {max}
 //                              mp.join {room} · mp.findJoin {filter} · mp.close · mp.leave · mp.send {type, data, to}
 //                              (CrazyGames) room.update {roomId, isJoinable, inviteParams} · room.left · room.inviteLink {params}
+//                              · user.auth (su aviso de inicio de sesión; responde {user})
 //   Eventos de la plataforma: emit(7, {name, data}) — mp.joined, mp.left, mp.message, mp.roomLeft, mp.host, room.join
 // Si un SDK falla o no responde, el juego sigue: «listo» sin anuncios a los 8 s y anuncios que caducan a los 60 s.
 (function () {
@@ -80,7 +81,7 @@
     info = info || {};
     emit(1, { store: store, ads: info.ads ? 1 : 0, rewarded: info.rewarded ? 1 : 0, user: info.user || '',
               lang: info.lang || info0.lang || '', lb: info.lb || '', mp: info.mp ? 1 : 0, pid: info.pid || '',
-              instant: info.instant ? 1 : 0, invite: info.invite || '' });
+              instant: info.instant ? 1 : 0, invite: info.invite || '', acct: info.acct ? 1 : 0 });
   }
 
   function reply(id, ok, data) {
@@ -143,7 +144,9 @@
         try { instant = !!g.isInstantMultiplayer; } catch (e) { }
         try { invite = g.inviteParams ? JSON.stringify(g.inviteParams) : ''; } catch (e) { }
         try { if (g.addJoinRoomListener) g.addJoinRoomListener(function (params) { platformEvent('room.join', params || {}); }); } catch (e) { }
-        var finish = function (user) { sendReady({ ads: ads, rewarded: ads, user: user && user.username, instant: instant, invite: invite }); };
+        var acct = false;
+        try { acct = !!(sdk.user && sdk.user.isUserAccountAvailable); } catch (e) { }
+        var finish = function (user) { sendReady({ ads: ads, rewarded: ads, user: user && user.username, instant: instant, invite: invite, acct: acct }); };
         try {
           if (sdk.user && sdk.user.isUserAccountAvailable) sdk.user.getUser().then(finish).catch(function () { finish(null); });
           else finish(null);
@@ -159,6 +162,16 @@
     },
     call: function (id, method, args) {
       var sdk = cg.sdk(), g = sdk && sdk.game;
+      // Cuenta de CrazyGames: su propio aviso de inicio de sesión (el juego no puede usar cuentas externas)
+      if (method === 'user.auth') {
+        var u = sdk && sdk.user;
+        if (!u || !u.isUserAccountAvailable) { reply(id, false, { error: 'not_available' }); return; }
+        try {
+          u.showAuthPrompt().then(function (user) { reply(id, !!user, { user: (user && user.username) || '' }); })
+            .catch(function (e) { reply(id, false, { error: String((e && (e.code || e.message)) || e) }); });
+        } catch (e) { reply(id, false, { error: String((e && e.message) || e) }); }
+        return;
+      }
       if (!g) { reply(id, false, { error: 'not_ready' }); return; }
       try {
         switch (method) {

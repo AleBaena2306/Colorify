@@ -5,50 +5,62 @@ using UnityEngine.UI;
 
 namespace Colorify
 {
-    // Tutorial de COLLECTION tras la primera partida (una sola vez por jugador): todo en negro translúcido menos el
-    // botón COLLECTION del menú, una mano que lo señala (Kenney Cursor Pack, CC0) y no se puede tocar nada más hasta
-    // pulsarlo. Enseña el camino menú → COLLECTION y engancha con lo que ya se ha desbloqueado en esa partida.
+    // Tutoriales forzados del menú (una sola vez por jugador): todo en negro translúcido menos un botón, una mano que lo
+    // señala (Kenney Cursor Pack, CC0) y no se puede tocar nada más hasta pulsarlo.
+    //   · COLLECTION: tras la primera partida (enseña el camino menú → COLLECTION).
+    //   · Perfil (emblema y nombre de arriba a la izquierda): desde la 3.ª partida, solo donde el jugador puede
+    //     registrar su nombre (ver ProfileNeedsRegistration en ColorifyGame.Profile.cs).
     // Técnica: canvas anidados con orden propio (velo 50 < botón 60 < mano 70). El velo recibe todos los toques
     // salvo los del botón, que queda por encima. Al terminar, el botón vuelve a su orden normal.
     public partial class ColorifyGame
     {
+        private enum CoachKind { None, Collection, Profile }
+
         private const int CoachDimOrder = 50, CoachTargetOrder = 60, CoachHandOrder = 70;
         private const float CoachDelay = 0.55f;      // deja que el menú termine de aparecer
         private const float CoachDimAlpha = 0.78f;
         private const float CoachTapPeriod = 1.15f;  // un «toque» de la mano cada 1,15 s
+        private const int ProfileCoachRuns = 3;      // partidas de Normal antes del tutorial del perfil
 
         private RectTransform coachRoot;
         private Canvas coachTargetCanvas;
         private Coroutine coachRoutine;
+        private CoachKind coachKind;
         private float coachShownAt;
         private static Sprite handSprite;
         private Button overAgain, overMenu;   // PLAY AGAIN y MENU del fin de partida
 
         private bool CoachActive => coachRoot != null;
         private bool CollectionCoachPending => save != null && !save.collectionCoachDone && save.normalRunsPlayed > 0;
+        private bool ProfileCoachPending => save != null && save.collectionCoachDone && !save.profileCoachDone &&
+                                            save.normalRunsPlayed >= ProfileCoachRuns && ProfileNeedsRegistration;
 
-        // Se llama al mostrar el menú
-        private void MaybeStartCollectionCoach()
+        // Se llama al mostrar el menú (y cuando la plataforma termina de arrancar)
+        private void MaybeStartMenuCoach()
         {
-            if (!CollectionCoachPending || CoachActive || coachRoutine != null || menuCollection == null) return;
-            coachRoutine = StartCoroutine(CollectionCoach());
+            if (CoachActive || coachRoutine != null || save == null) return;
+            if (CollectionCoachPending && menuCollection != null) coachRoutine = StartCoroutine(MenuCoach(CoachKind.Collection));
+            else if (ProfileCoachPending && menuProfile != null) coachRoutine = StartCoroutine(MenuCoach(CoachKind.Profile));
         }
 
-        private IEnumerator CollectionCoach()
+        private Button CoachTarget(CoachKind kind) => kind == CoachKind.Collection ? menuCollection : menuProfile;
+
+        private IEnumerator MenuCoach(CoachKind kind)
         {
             for (float t = 0f; t < CoachDelay; t += Time.unscaledDeltaTime) yield return null;
+            var button = CoachTarget(kind);
             // Si mientras tanto el jugador ya ha salido del menú (o hay otra pantalla delante), será la próxima vez
-            if (state != State.Menu || !v.menu.gameObject.activeSelf || !menuCollection.gameObject.activeInHierarchy || OverlayAboveMenu())
+            if (button == null || state != State.Menu || !v.menu.gameObject.activeSelf || !button.gameObject.activeInHierarchy || OverlayAboveMenu())
             {
                 coachRoutine = null;
                 yield break;
             }
 
-            BuildCoach(out var group, out var halo, out var hand);
-            var target = (RectTransform)menuCollection.transform;
+            BuildCoach(kind, button, out var group, out var halo, out var hand);
+            var target = (RectTransform)button.transform;
             sfx.Play(Sfx.Id.Card);
             Haptics.Pulse(30);
-            Analytics.Log("tutorial_start", ("step", "collection"), ("runs", save.normalRunsPlayed));
+            Analytics.Log("tutorial_start", ("step", CoachStep(kind)), ("runs", save.normalRunsPlayed));
 
             while (CoachActive)
             {
@@ -88,10 +100,40 @@ namespace Colorify
             coachRoutine = null;
         }
 
-        private void BuildCoach(out CanvasGroup group, out Image halo, out RectTransform hand)
+        private static string CoachStep(CoachKind kind) => kind == CoachKind.Collection ? "collection" : "profile";
+
+        // Textos: qué hay detrás del botón y qué hacer
+        private void CoachTexts(CoachKind kind, out string title, out string sub)
         {
-            var target = (RectTransform)menuCollection.transform;
-            coachRoot = UIKit.Stretch(UIKit.Rect("CollectionCoach", v.canvas.transform));   // pantalla completa, fuera de la zona segura también
+            if (kind == CoachKind.Collection)
+            {
+                bool fresh = AnyNew(save.lifetimePoints, Collection.Kind.Theme, Collection.Kind.Color, Collection.Kind.Emblem, Collection.Kind.NameColor) || HasUnseenAwards;
+                title = fresh ? "YOU UNLOCKED SOMETHING!" : "THEMES & COLORS TO UNLOCK";
+                sub = fresh ? "Tap COLLECTION to see it" : "Every point you score counts. Tap COLLECTION";
+                return;
+            }
+            switch (KovusPride.Publishing.StorePlatform.Current)
+            {
+                case KovusPride.Publishing.Store.Portfolio:
+                    title = "MAKE THIS NAME YOURS";
+                    sub = "Sign in with Google to keep it on any device";
+                    break;
+                case KovusPride.Publishing.Store.CrazyGames:
+                    title = "PLAY WITH YOUR CRAZYGAMES NAME";
+                    sub = "Log in to keep your name and progress";
+                    break;
+                default:
+                    title = "REGISTER YOUR NAME";
+                    sub = "Choose how everyone sees you";
+                    break;
+            }
+        }
+
+        private void BuildCoach(CoachKind kind, Button button, out CanvasGroup group, out Image halo, out RectTransform hand)
+        {
+            coachKind = kind;
+            var target = (RectTransform)button.transform;
+            coachRoot = UIKit.Stretch(UIKit.Rect("MenuCoach", v.canvas.transform));   // pantalla completa, fuera de la zona segura también
             coachRoot.SetAsLastSibling();
             group = coachRoot.gameObject.AddComponent<CanvasGroup>();
             group.alpha = 0f;
@@ -108,12 +150,9 @@ namespace Colorify
             halo = UIKit.Box("Halo", coachRoot, Color.white, 0.6f);
             halo.rectTransform.anchorMin = halo.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
 
-            // Texto encima del botón: qué hay dentro y qué hacer
-            long life = save.lifetimePoints;
-            bool fresh = AnyNew(life, Collection.Kind.Theme, Collection.Kind.Color, Collection.Kind.Emblem, Collection.Kind.NameColor) || HasUnseenAwards;
-            var title = UIKit.Text("Title", coachRoot, fresh ? "YOU UNLOCKED SOMETHING!" : "THEMES & COLORS TO UNLOCK", 66, Color.white, black: true);
-            var sub = UIKit.Text("Sub", coachRoot, "Tap COLLECTION to see it", 42, UIKit.WithAlpha(Color.white, 0.85f));
-            if (!fresh) sub.text = "Every point you score counts. Tap COLLECTION";
+            CoachTexts(kind, out string titleText, out string subText);
+            var title = UIKit.Text("Title", coachRoot, titleText, 66, Color.white, black: true);
+            var sub = UIKit.Text("Sub", coachRoot, subText, 42, UIKit.WithAlpha(Color.white, 0.85f));
             foreach (var t in new[] { title, sub })
             {
                 t.enableAutoSizing = true;
@@ -122,10 +161,14 @@ namespace Colorify
                 t.enableWordWrapping = false;
                 t.overflowMode = TextOverflowModes.Ellipsis;
             }
+            // Encima del botón si está en la mitad de abajo; debajo si está arriba (el perfil)
             Vector2 c = coachRoot.InverseTransformPoint(target.TransformPoint(target.rect.center));
-            float top = c.y + target.rect.height * 0.5f;
-            UIKit.Place(title.rectTransform, 0.5f, 0.5f, new Vector2(980, 90), new Vector2(0, top + 190f));
-            UIKit.Place(sub.rectTransform, 0.5f, 0.5f, new Vector2(980, 60), new Vector2(0, top + 115f));
+            float half = target.rect.height * 0.5f;
+            bool below = c.y > 0f;
+            float titleY = below ? c.y - half - 150f : c.y + half + 190f;
+            float subY = below ? c.y - half - 225f : c.y + half + 115f;
+            UIKit.Place(title.rectTransform, 0.5f, 0.5f, new Vector2(980, 90), new Vector2(0, titleY));
+            UIKit.Place(sub.rectTransform, 0.5f, 0.5f, new Vector2(980, 60), new Vector2(0, subY));
             juice.PopIn(title.transform, 0.1f, 0.35f, 0.6f);
 
             // Mano en su propio canvas, por encima del botón; el pivote es la punta del dedo
@@ -142,10 +185,10 @@ namespace Colorify
             handCanvas.overrideSorting = true;
             handCanvas.sortingOrder = CoachHandOrder;
 
-            // El botón COLLECTION sube por encima del velo y es lo único que se puede pulsar
-            coachTargetCanvas = menuCollection.GetComponent<Canvas>();
-            if (coachTargetCanvas == null) coachTargetCanvas = menuCollection.gameObject.AddComponent<Canvas>();
-            if (menuCollection.GetComponent<GraphicRaycaster>() == null) menuCollection.gameObject.AddComponent<GraphicRaycaster>();
+            // El botón sube por encima del velo y es lo único que se puede pulsar
+            coachTargetCanvas = button.GetComponent<Canvas>();
+            if (coachTargetCanvas == null) coachTargetCanvas = button.gameObject.AddComponent<Canvas>();
+            if (button.GetComponent<GraphicRaycaster>() == null) button.gameObject.AddComponent<GraphicRaycaster>();
             coachTargetCanvas.overrideSorting = true;
             coachTargetCanvas.sortingOrder = CoachTargetOrder;
             coachShownAt = Time.unscaledTime;
@@ -170,19 +213,19 @@ namespace Colorify
             return false;
         }
 
-        // El jugador ha pulsado COLLECTION (por cualquier camino): tutorial superado para siempre
-        private void CompleteCollectionCoach()
+        // El jugador ha pulsado el botón (por cualquier camino): ese tutorial queda superado para siempre
+        private void CompleteCoach(CoachKind kind)
         {
-            bool wasShowing = CoachActive;
-            if (!save.collectionCoachDone)
-            {
-                save.collectionCoachDone = true;
-                save.Save();
-            }
-            if (!wasShowing) return;
-            Analytics.Log("tutorial_complete", ("step", "collection"), ("seconds", Mathf.RoundToInt(Time.unscaledTime - coachShownAt)));
+            bool changed = false;
+            if (kind == CoachKind.Collection && !save.collectionCoachDone) { save.collectionCoachDone = true; changed = true; }
+            if (kind == CoachKind.Profile && !save.profileCoachDone) { save.profileCoachDone = true; changed = true; }
+            if (changed) save.Save();
+            if (!CoachActive || coachKind != kind) return;
+            Analytics.Log("tutorial_complete", ("step", CoachStep(kind)), ("seconds", Mathf.RoundToInt(Time.unscaledTime - coachShownAt)));
             CloseCoach();
         }
+
+        private void CompleteCollectionCoach() => CompleteCoach(CoachKind.Collection);
 
         // Primera partida (con el tutorial pendiente): el fin de partida deja un solo camino, NEXT, que lleva al
         // menú, donde espera el tutorial. El resto de partidas, PLAY AGAIN y MENU como siempre.
@@ -204,6 +247,8 @@ namespace Colorify
             if (coachTargetCanvas != null) coachTargetCanvas.overrideSorting = false;
             if (coachRoot != null) Destroy(coachRoot.gameObject);
             coachRoot = null;
+            coachTargetCanvas = null;
+            coachKind = CoachKind.None;
         }
     }
 }

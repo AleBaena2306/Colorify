@@ -156,6 +156,7 @@ namespace Colorify
                 menuNewBadge.gameObject.SetActive(fresh);
                 if (fresh && !was) juice.PopIn(menuNewBadge, 0.3f, 0.35f, 0.4f);
             }
+            RefreshMenuProfile();
         }
 
         private void ShowCollection()
@@ -167,6 +168,7 @@ namespace Colorify
             collectionTab = HasUnseenAwards ? "profile" : collectionTab;
             for (int i = Collection.Ladder.Length - 1; i >= 0; i--)
                 if (IsNew(Collection.Ladder[i], life)) { collectionTab = TabOf(Collection.Ladder[i].kind); break; }
+            if (forceCollectionTab != null) { collectionTab = forceCollectionTab; forceCollectionTab = null; }
             RefreshCollection();
             Show(collection);
         }
