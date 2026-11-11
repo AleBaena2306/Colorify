@@ -154,13 +154,14 @@ namespace Colorify
             var lt = UIKit.Text("Title", leaderboard.transform, "LEADERBOARD", 96, UIKit.Ink, black: true);
             UIKit.Place(lt.rectTransform, 0.5f, 1f, new Vector2(1000, 130), new Vector2(0, -120));
             // Normal (puntos) y trofeos. Supervivencia ya no está en el menú, así que tampoco su ranking.
-            string[] modes = { "points", "trophies" };
-            string[] labels = { "NORMAL", "TROPHIES" };
+            // Normal (de siempre), temporada en curso (mes: los 3 primeros ganan emblema) y trofeos
+            string[] modes = { "points", "month", "trophies" };
+            string[] labels = { "ALL TIME", "SEASON " + Emblems.Roman(Emblems.CurrentSeason), "TROPHIES" };
             for (int i = 0; i < modes.Length; i++)
             {
                 string m = modes[i];
-                var tab = UIKit.Button("Tab" + m, leaderboard.transform, labels[i], UIKit.PaperDark, new Vector2(300, 100), () => ShowLeaderboard(m), 40);
-                UIKit.Place((RectTransform)tab.transform, 0.5f, 1f, new Vector2(300, 100), new Vector2(-160 + i * 320, -260));
+                var tab = UIKit.Button("Tab" + m, leaderboard.transform, labels[i], UIKit.PaperDark, new Vector2(300, 100), () => ShowLeaderboard(m), 38);
+                UIKit.Place((RectTransform)tab.transform, 0.5f, 1f, new Vector2(300, 100), new Vector2(-320 + i * 320, -260));
                 lbTabs[m] = tab.GetComponent<Image>();
             }
             lbList = UIKit.Rect("List", leaderboard.transform);
@@ -168,7 +169,7 @@ namespace Colorify
             lbStatus = UIKit.Text("Status", leaderboard.transform, "", 42, UIKit.InkSoft);
             UIKit.Place(lbStatus.rectTransform, 0.5f, 1f, new Vector2(960, 100), new Vector2(0, -500));
             lbMe = UIKit.Text("Me", leaderboard.transform, "", 40, UIKit.Ink, black: true);
-            UIKit.Place(lbMe.rectTransform, 0.5f, 0f, new Vector2(1000, 70), new Vector2(0, 240));
+            UIKit.Place(lbMe.rectTransform, 0.5f, 0f, new Vector2(1000, 110), new Vector2(0, 250));
             var lbBack = UIKit.Button("Back", leaderboard.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), () => { sfx.Play(Sfx.Id.Click); Hide(leaderboard); }, 50);
             UIKit.Place((RectTransform)lbBack.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
@@ -708,7 +709,8 @@ namespace Colorify
             for (int i = lbList.childCount - 1; i >= 0; i--) Destroy(lbList.GetChild(i).gameObject);
             if (r == null || !r.ok) { lbStatus.text = "Couldn't load the leaderboard.\nCheck your connection."; return; }
             lbStatus.text = r.top.Count == 0 ? (r.mode == "trophies" ? "No trophies yet. Win a public duel or race!" : "No scores yet. Be the first!") : "";
-            string unit = r.mode == "points" ? "pts" : r.mode == "normal" ? "hits" : r.mode == "duel" ? "wins" : r.mode == "trophies" ? "trophies" : "";
+            string unit = r.mode == "points" || r.mode == "month" ? "pts" : r.mode == "normal" ? "hits" : r.mode == "duel" ? "wins" : r.mode == "trophies" ? "trophies" : "";
+            if (r.awards != null && r.awards.Count > 0) UpdateAwards(r.awards);
             int rows = Mathf.Min(r.top.Count, 20);
             for (int i = 0; i < rows; i++)
             {
@@ -717,10 +719,15 @@ namespace Colorify
                 UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(980, 56), new Vector2(0, -30 - i * 60));
                 var rank = UIKit.Text("Rank", row.transform, "#" + e.rank, 34, UIKit.InkSoft, black: true);
                 rank.alignment = TMPro.TextAlignmentOptions.Left;
-                UIKit.Place(rank.rectTransform, 0f, 0.5f, new Vector2(110, 56), new Vector2(80, 0));
-                var name = UIKit.Text("Name", row.transform, e.name + (string.IsNullOrEmpty(e.info) ? "" : $"  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{e.info}</color></size>"), 34, UIKit.Ink, black: true);
+                UIKit.Place(rank.rectTransform, 0f, 0.5f, new Vector2(110, 56), new Vector2(70, 0));
+                // Emblema y color del nombre de cada jugador (su aspecto); el propio, el actual de este dispositivo
+                string emblemId, colorId;
+                Emblems.ParseLook(e.me ? CurrentLook : e.look, out emblemId, out colorId);
+                var em = EmblemView.Build(row.transform, emblemId, 46f);
+                UIKit.Place(em, 0f, 0.5f, new Vector2(46, 46), new Vector2(152, 0));
+                var name = UIKit.Text("Name", row.transform, EmblemView.Name(e.name, colorId) + (string.IsNullOrEmpty(e.info) ? "" : $"  <size=70%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{e.info}</color></size>"), 34, UIKit.Ink, black: true);
                 name.alignment = TMPro.TextAlignmentOptions.Left;
-                UIKit.Place(name.rectTransform, 0f, 0.5f, new Vector2(560, 56), new Vector2(420, 0));
+                UIKit.Place(name.rectTransform, 0f, 0.5f, new Vector2(520, 56), new Vector2(448, 0));
                 var score = UIKit.Text("Score", row.transform, UIKit.Thousands(e.score) + (unit != "" ? $" <size=70%>{unit}</size>" : ""), 36, UIKit.Ink, black: true);
                 score.alignment = TMPro.TextAlignmentOptions.Right;
                 UIKit.Place(score.rectTransform, 1f, 0.5f, new Vector2(280, 56), new Vector2(-170, 0));
@@ -728,6 +735,14 @@ namespace Colorify
             lbMe.text = r.me != null && r.me.rank > 0
                 ? $"{CurrentName}: #{r.me.rank} of {r.total} · {UIKit.Thousands(r.me.best)} {unit}"
                 : $"{CurrentName}: no {(r.mode == "trophies" ? "trophies" : "score")} yet";
+            if (r.mode == "month")
+            {
+                // Temporada: cuánto queda y qué se gana
+                long msLeft = r.SeasonMsLeft();
+                int days = Mathf.Max(0, Mathf.CeilToInt(msLeft / 86400000f));
+                lbMe.text += $"\n<size=75%><color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>Season {Emblems.Roman(r.season > 0 ? r.season : Emblems.CurrentSeason)} ends in {days} day{(days == 1 ? "" : "s")} · top 3 win a gold, silver or bronze emblem</color></size>";
+                if (r.top.Count == 0) lbStatus.text = "No scores this season yet. Be the first!";
+            }
         }
 
         // Envía la puntuación al ranking global (Normal y Supervivencia). Sin conexión, simplemente no se envía.
@@ -738,9 +753,10 @@ namespace Colorify
             var s = samples != null && samples.Count >= 6 ? new List<int>(samples) : null;
             StartCoroutine(OnlineApi.SubmitScore(cfg, save.playerId, CurrentName, m, score, info, s, s != null ? misses : null, r =>
             {
+                if (r != null && r.ok) UpdateAwards(r.awards);
                 if (r != null && !r.ok && r.error == "bad_name") sessionName = null;   // nombre reservado por otra cuenta
                 if (m == "points") StartCoroutine(LoadTuning());   // ritmo ya corregido para la siguiente partida
-            }, playMs, end));
+            }, playMs, end, CurrentLook));
         }
 
         // =====================================================================

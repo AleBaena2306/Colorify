@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Colorify.Online;
 
 namespace Colorify
 {
@@ -19,6 +20,9 @@ namespace Colorify
         private int soloColorsCount = -1;
         private Collection.Theme previewing;   // tema bloqueado que se está probando unos segundos
         private Coroutine previewRoutine;
+        private string collectionTab = "profile";   // profile · themes · colors
+        private readonly Dictionary<string, Image> collectionTabs = new Dictionary<string, Image>();
+        private readonly Dictionary<string, RectTransform> collectionTabBadges = new Dictionary<string, RectTransform>();
 
         // Puntos acumulados a mostrar: en la pantalla de fin de partida ya cuentan los de la partida que acaba de
         // terminar (se guardan al salir de esa pantalla, por si el jugador continúa con anuncio)
@@ -95,8 +99,21 @@ namespace Colorify
             UIKit.Place(title.rectTransform, 0.5f, 1f, new Vector2(1000, 150), new Vector2(0, -150));
             collectionSub = UIKit.Text("Sub", collection.transform, "", 38, UIKit.InkSoft);
             UIKit.Place(collectionSub.rectTransform, 0.5f, 1f, new Vector2(1000, 110), new Vector2(0, -265));
+            // Pestañas: PROFILE (nombre, emblema y color del nombre), THEMES y COLORS
+            string[] tabs = { "profile", "themes", "colors" };
+            string[] labels = { "PROFILE", "THEMES", "COLORS" };
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                string tab = tabs[i];
+                var b = UIKit.Button("Tab" + tab, collection.transform, labels[i], UIKit.PaperDark, new Vector2(300, 90), () => { sfx.Play(Sfx.Id.Click); EndPreview(); collectionTab = tab; RefreshCollection(); }, 40);
+                UIKit.Place((RectTransform)b.transform, 0.5f, 1f, new Vector2(300, 90), new Vector2(-320 + i * 320, -380));
+                collectionTabs[tab] = b.GetComponent<Image>();
+                var dot = UIKit.Box("New", b.transform, ColorifyView.TitleColors[5], 2f);
+                UIKit.Place(dot.rectTransform, 1f, 1f, new Vector2(26, 26), new Vector2(-6, -6));
+                collectionTabBadges[tab] = dot.rectTransform;
+            }
             collectionList = UIKit.Rect("List", collection.transform);
-            UIKit.Place(collectionList, 0.5f, 0.5f, new Vector2(1000, 1180), new Vector2(0, -60));
+            UIKit.Place(collectionList, 0.5f, 0.5f, new Vector2(1000, 1100), new Vector2(0, -110));
             var back = UIKit.Button("Back", collection.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), HideCollection, 50);
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
@@ -132,7 +149,7 @@ namespace Colorify
                 menuNextText.text = $"NEXT UNLOCK: {next.name.ToUpperInvariant()} {Collection.KindLabel(next)}  ·  " +
                                     $"<color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{UIKit.Thousands(life)} / {UIKit.Thousands(next.cost)}</color>";
             }
-            bool fresh = Collection.UnlockedCount(life) > save.seenUnlocks;
+            bool fresh = AnyNew(life, Collection.Kind.Theme, Collection.Kind.Color, Collection.Kind.Emblem, Collection.Kind.NameColor) || HasUnseenAwards;
             if (menuNewBadge != null)
             {
                 bool was = menuNewBadge.gameObject.activeSelf;
@@ -144,6 +161,11 @@ namespace Colorify
         private void ShowCollection()
         {
             sfx.Play(Sfx.Id.Click);
+            // Se abre en la pestaña de lo último nuevo (o en PROFILE)
+            long life = LifetimeShown;
+            collectionTab = HasUnseenAwards ? "profile" : collectionTab;
+            for (int i = Collection.Ladder.Length - 1; i >= 0; i--)
+                if (IsNew(Collection.Ladder[i], life)) { collectionTab = TabOf(Collection.Ladder[i].kind); break; }
             RefreshCollection();
             Show(collection);
         }
@@ -163,26 +185,62 @@ namespace Colorify
             collectionSub.text = $"{UIKit.Thousands(life)} PTS EARNED IN NORMAL\n" +
                 (next != null ? $"Next: {next.name.ToUpperInvariant()} {Collection.KindLabel(next)} at {UIKit.Thousands(next.cost)}" : "Everything unlocked!");
             for (int i = collectionList.childCount - 1; i >= 0; i--) Destroy(collectionList.GetChild(i).gameObject);
+            foreach (var kv in collectionTabs) kv.Value.color = kv.Key == collectionTab ? ColorifyView.TitleColors[3] : UIKit.PaperDark;
 
-            // Dos columnas: temas a la izquierda, colores a la derecha
             var themes = new List<Collection.Item>();
             var colors = new List<Collection.Item>();
             themes.Add(new Collection.Item { id = "theme.paper", name = Collection.DefaultTheme.name, kind = Collection.Kind.Theme, cost = 0, theme = Collection.DefaultTheme });
-            foreach (var it in Collection.Ladder) (it.kind == Collection.Kind.Theme ? themes : colors).Add(it);
-            int seen = save.seenUnlocks;
-            Column("THEMES", themes, -250f, life, seen);
-            Column("COLORS", colors, 250f, life, seen);
-            save.seenUnlocks = Mathf.Max(save.seenUnlocks, Collection.UnlockedCount(life));
+            foreach (var it in Collection.Ladder)
+            {
+                if (it.kind == Collection.Kind.Theme) themes.Add(it);
+                else if (it.kind == Collection.Kind.Color) colors.Add(it);
+            }
+            // Puntos de cada pestaña con algo nuevo
+            collectionTabBadges["profile"].gameObject.SetActive(collectionTab != "profile" && (HasUnseenAwards || AnyNew(life, Collection.Kind.Emblem, Collection.Kind.NameColor)));
+            collectionTabBadges["themes"].gameObject.SetActive(collectionTab != "themes" && AnyNew(life, Collection.Kind.Theme));
+            collectionTabBadges["colors"].gameObject.SetActive(collectionTab != "colors" && AnyNew(life, Collection.Kind.Color));
+
+            if (collectionTab == "themes") Column("THEMES", themes, 0f, life);
+            else if (collectionTab == "colors") Column("COLORS", colors, 0f, life);
+            else BuildProfileTab(life);
+            // Lo de la pestaña abierta ya se ha visto; lo del resto sigue marcado hasta abrirla
+            MarkSeen(life, collectionTab);
+            if (collectionTab == "profile") { foreach (var a in save.awards) if (!save.seenAwards.Contains(a)) save.seenAwards.Add(a); }
+            save.Save();
         }
 
-        // ¿Es nuevo (desbloqueado y aún no visto en COLLECTION)? Por orden de la escalera
-        private static bool IsNew(Collection.Item it, long life, int seen)
+        // Lo visto se recuerda por objeto (save.seenItems): al abrir una pestaña, todo lo desbloqueado de ella queda visto
+        private void MarkSeen(long life, string tab)
         {
-            int idx = System.Array.IndexOf(Collection.Ladder, it);
-            return idx >= seen && idx >= 0 && Collection.IsUnlocked(it, life);
+            foreach (var it in Collection.Ladder)
+                if (Collection.IsUnlocked(it, life) && TabOf(it.kind) == tab && !save.seenItems.Contains(it.id)) save.seenItems.Add(it.id);
         }
 
-        private void Column(string header, List<Collection.Item> items, float x, long life, int seen)
+        private static string TabOf(Collection.Kind k) => k == Collection.Kind.Theme ? "themes" : k == Collection.Kind.Color ? "colors" : "profile";
+
+        private bool AnyNew(long life, params Collection.Kind[] kinds)
+        {
+            foreach (var it in Collection.Ladder)
+            {
+                if (!Collection.IsUnlocked(it, life)) break;
+                if (System.Array.IndexOf(kinds, it.kind) >= 0 && !save.seenItems.Contains(it.id)) return true;
+            }
+            return false;
+        }
+
+        private bool IsNew(Collection.Item it, long life) => it.id != null && Collection.IsUnlocked(it, life) && !save.seenItems.Contains(it.id);
+
+        private bool HasUnseenAwards
+        {
+            get
+            {
+                if (save == null || save.awards == null) return false;
+                foreach (var a in save.awards) if (!save.seenAwards.Contains(a)) return true;
+                return false;
+            }
+        }
+
+        private void Column(string header, List<Collection.Item> items, float x, long life)
         {
             var h = UIKit.Text("Header", collectionList, header, 40, UIKit.InkSoft, black: true);
             UIKit.Place(h.rectTransform, 0.5f, 1f, new Vector2(480, 60), new Vector2(x, -30));
@@ -191,7 +249,7 @@ namespace Colorify
                 var it = items[i];
                 bool unlocked = Collection.IsUnlocked(it, life);
                 bool inUse = it.kind == Collection.Kind.Theme && it.theme.id == CurrentThemeId;
-                bool isNew = IsNew(it, life, seen);
+                bool isNew = IsNew(it, life);
                 var row = UIKit.Box("Item" + i, collectionList, inUse ? UIKit.WithAlpha(ColorifyView.TitleColors[3], 0.45f) : UIKit.WithAlpha(UIKit.PaperDark, unlocked ? 0.95f : 0.55f), 0.7f, raycast: true);
                 UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(480, 92), new Vector2(x, -110 - i * 104));
                 if (isNew)
@@ -299,6 +357,189 @@ namespace Colorify
             var next = Collection.Next(after);
             overUnlock.text = next == null ? "" :
                 $"NEXT: {next.name.ToUpperInvariant()} {Collection.KindLabel(next)}  ·  {UIKit.Thousands(after)} / {UIKit.Thousands(next.cost)}";
+        }
+
+        // ---------------- Perfil: nombre, emblema y color del nombre ----------------
+
+        private string CurrentLook => Emblems.Look(save.emblem, save.nameColor);
+
+        private void BuildProfileTab(long life)
+        {
+            // Vista previa: así se ve en el ranking
+            var preview = UIKit.Box("Preview", collectionList, UIKit.WithAlpha(ColorifyView.TitleColors[0], 0.25f), 0.6f);
+            UIKit.Place(preview.rectTransform, 0.5f, 1f, new Vector2(980, 104), new Vector2(0, -56));
+            var em = EmblemView.Build(preview.transform, save.emblem, 76f);
+            UIKit.Place(em, 0f, 0.5f, new Vector2(76, 76), new Vector2(64, 0));
+            var nm = UIKit.Text("Name", preview.transform, EmblemView.Name(CurrentName, save.nameColor), 44, UIKit.Ink, black: true);
+            nm.alignment = TextAlignmentOptions.Left;
+            nm.enableAutoSizing = true; nm.fontSizeMin = 26f; nm.fontSizeMax = 44f;
+            UIKit.Place(nm.rectTransform, 0f, 0.5f, new Vector2(520, 70), new Vector2(380, 0));
+            var best = UIKit.Text("Best", preview.transform, save.bestNormalPoints > 0 ? UIKit.Thousands(save.bestNormalPoints) + " <size=70%>pts</size>" : "", 38, UIKit.Ink, black: true);
+            best.alignment = TextAlignmentOptions.Right;
+            UIKit.Place(best.rectTransform, 1f, 0.5f, new Vector2(300, 70), new Vector2(-180, 0));
+            var hint = UIKit.Text("Hint", collectionList, LocalProfile ? "Your look is saved on this device." : "This is how everyone sees you on the leaderboard.", 28, UIKit.InkSoft);
+            UIKit.Place(hint.rectTransform, 0.5f, 1f, new Vector2(980, 40), new Vector2(0, -132));
+            if (CanRename)
+            {
+                var rn = UIKit.Button("Rename", collectionList, LocalProfile && string.IsNullOrEmpty(save.localName) ? "REGISTER YOUR NAME" : "CHANGE NAME",
+                    LocalProfile && string.IsNullOrEmpty(save.localName) ? ColorifyView.TitleColors[2] : UIKit.PaperDark, new Vector2(460, 74), ShowNameEditor, 32);
+                UIKit.Place((RectTransform)rn.transform, 0.5f, 1f, new Vector2(460, 74), new Vector2(0, -196));
+            }
+
+            // Emblemas por puntos (5 por fila)
+            Header("EMBLEMS", -270f);
+            for (int i = 0; i < Emblems.All.Length; i++)
+            {
+                var e = Emblems.All[i];
+                bool unlocked = Collection.EmblemUnlocked(e.id, life, save.awards);
+                long cost = Collection.CostOf(Collection.Kind.Emblem, e.id);
+                var item = FindItem(Collection.Kind.Emblem, e.id);
+                EmblemCell(e, unlocked, unlocked ? e.name.ToUpperInvariant() : UIKit.Thousands(cost) + " PTS", i % 5, -350f - (i / 5) * 160f,
+                    item != null && IsNew(item, life), () => PickEmblem(e, unlocked, $"{e.name.ToUpperInvariant()} EMBLEM · unlocks at {UIKit.Thousands(cost)} pts"));
+            }
+
+            // Temporada en curso: oro, plata y bronce para los 3 primeros del mes; y los ya ganados
+            int season = Emblems.CurrentSeason;
+            var now = System.DateTime.UtcNow;
+            var end = new System.DateTime(now.Year, now.Month, 1, 0, 0, 0, System.DateTimeKind.Utc).AddMonths(1);
+            int days = Mathf.Max(0, Mathf.CeilToInt((float)(end - now).TotalDays));
+            Header($"SEASON {Emblems.Roman(season)}  ·  TOP 3 OF THE MONTH  ·  {days} DAY{(days == 1 ? "" : "S")} LEFT", -680f);
+            var medals = new List<Emblems.Emblem>();
+            for (int p = 1; p <= 3; p++) medals.Add(Emblems.SeasonEmblem(season, p));
+            foreach (var a in save.awards)
+            {
+                int sn, pl;
+                if (Emblems.TryParseSeason(a, out sn, out pl) && sn != season) medals.Add(Emblems.SeasonEmblem(sn, pl));
+            }
+            for (int i = 0; i < Mathf.Min(medals.Count, 5); i++)
+            {
+                var e = medals[i];
+                bool won = save.awards.Contains(e.id);
+                int sn, pl;
+                Emblems.TryParseSeason(e.id, out sn, out pl);
+                string label = won ? $"S{Emblems.Roman(sn)} {(pl == 1 ? "GOLD" : pl == 2 ? "SILVER" : "BRONZE")}" : $"TOP {pl}";
+                EmblemCell(e, won, label, i, -760f, won && !save.seenAwards.Contains(e.id),
+                    () => PickEmblem(e, won, $"Finish Season {Emblems.Roman(sn)} in the top {pl} of the monthly leaderboard to win it"));
+            }
+
+            // Color del nombre
+            Header("NAME COLOR", -880f);
+            for (int i = 0; i < Emblems.NameColors.Length; i++)
+            {
+                var c = Emblems.NameColors[i];
+                bool unlocked = Collection.NameColorUnlocked(c.id, life);
+                long cost = Collection.CostOf(Collection.Kind.NameColor, c.id);
+                int col = i % 5, row = i / 5;
+                bool sel = save.nameColor == c.id;
+                var cell = UIKit.Box("Name" + i, collectionList, sel ? UIKit.WithAlpha(ColorifyView.TitleColors[3], 0.5f) : UIKit.WithAlpha(UIKit.PaperDark, unlocked ? 0.95f : 0.5f), 0.6f, raycast: true);
+                UIKit.Place(cell.rectTransform, 0.5f, 1f, new Vector2(184, 78), new Vector2(-392f + col * 196f, -950f - row * 88f));
+                var t = UIKit.Text("Label", cell.transform, unlocked ? EmblemView.Name(c.name.ToUpperInvariant(), c.id) : UIKit.Thousands(cost) + " PTS", unlocked ? 30 : 24, UIKit.InkSoft, black: true);
+                t.enableAutoSizing = true; t.fontSizeMin = 16f; t.fontSizeMax = unlocked ? 30f : 24f;
+                UIKit.Stretch(t.rectTransform, 6f);
+                var item = FindItem(Collection.Kind.NameColor, c.id);
+                if (item != null && IsNew(item, life)) NewBadge(cell.transform);
+                var btn = cell.gameObject.AddComponent<Button>();
+                btn.onClick.AddListener(() => PickNameColor(c, unlocked, $"{c.name.ToUpperInvariant()} NAME · unlocks at {UIKit.Thousands(cost)} pts"));
+            }
+        }
+
+        private void Header(string text, float y)
+        {
+            var h = UIKit.Text("Header", collectionList, text, 32, UIKit.InkSoft, black: true);
+            h.enableAutoSizing = true; h.fontSizeMin = 20f; h.fontSizeMax = 32f;
+            UIKit.Place(h.rectTransform, 0.5f, 1f, new Vector2(980, 50), new Vector2(0, y));
+        }
+
+        private void EmblemCell(Emblems.Emblem e, bool unlocked, string label, int col, float y, bool isNew, System.Action onTap)
+        {
+            bool sel = save.emblem == e.id;
+            var cell = UIKit.Box("Emblem" + e.id, collectionList, sel ? UIKit.WithAlpha(ColorifyView.TitleColors[3], 0.5f) : UIKit.WithAlpha(UIKit.PaperDark, unlocked ? 0.95f : 0.5f), 0.6f, raycast: true);
+            UIKit.Place(cell.rectTransform, 0.5f, 1f, new Vector2(184, 150), new Vector2(-392f + col * 196f, y));
+            var em = EmblemView.Build(cell.transform, e, 78f);
+            UIKit.Place(em, 0.5f, 1f, new Vector2(78, 78), new Vector2(0, -52));
+            if (!unlocked) foreach (var g in em.GetComponentsInChildren<Graphic>(true)) g.color = new Color(g.color.r, g.color.g, g.color.b, g.color.a * 0.3f);
+            var t = UIKit.Text("Label", cell.transform, label, 24, unlocked ? UIKit.Ink : UIKit.InkSoft, black: true);
+            t.enableAutoSizing = true; t.fontSizeMin = 14f; t.fontSizeMax = 24f;
+            UIKit.Place(t.rectTransform, 0.5f, 0f, new Vector2(176, 40), new Vector2(0, 26));
+            if (isNew) NewBadge(cell.transform);
+            cell.gameObject.AddComponent<Button>().onClick.AddListener(() => onTap());
+        }
+
+        private void NewBadge(Transform parent)
+        {
+            var badge = UIKit.Box("New", parent, ColorifyView.TitleColors[5], 2f);
+            UIKit.Place(badge.rectTransform, 1f, 1f, new Vector2(70, 34), new Vector2(-6, 4));
+            var bt = UIKit.Text("Label", badge.transform, "NEW", 20, UIKit.Paper, black: true);
+            UIKit.Stretch(bt.rectTransform);
+            juice.PopIn(badge.transform, 0.15f, 0.35f, 0.5f);
+        }
+
+        private static Collection.Item FindItem(Collection.Kind kind, string id)
+        {
+            foreach (var it in Collection.Ladder)
+                if (it.kind == kind && ((kind == Collection.Kind.Emblem && it.emblem.id == id) || (kind == Collection.Kind.NameColor && it.nameColor.id == id))) return it;
+            return null;
+        }
+
+        private void PickEmblem(Emblems.Emblem e, bool unlocked, string lockedText)
+        {
+            if (!unlocked) { sfx.Play(Sfx.Id.Click); collectionSub.text = lockedText; return; }
+            sfx.Play(Sfx.Id.Card);
+            save.emblem = e.id;
+            PushLook();
+            RefreshCollection();
+            Analytics.Log("emblem_select", ("emblem", e.id));
+        }
+
+        private void PickNameColor(Emblems.NameColor c, bool unlocked, string lockedText)
+        {
+            if (!unlocked) { sfx.Play(Sfx.Id.Click); collectionSub.text = lockedText; return; }
+            sfx.Play(Sfx.Id.Card);
+            save.nameColor = c.id;
+            PushLook();
+            RefreshCollection();
+            Analytics.Log("name_color_select", ("color", c.id));
+        }
+
+        // Guarda el aspecto y, con servidor propio, lo manda para que se vea en el ranking
+        private void PushLook()
+        {
+            save.Save();
+            if (!OnlineEnabled) return;
+            EnsureIdentity();
+            StartCoroutine(OnlineApi.SetLook(cfg, save.playerId, CurrentLook, r => { if (r != null && r.ok) UpdateAwards(r.awards); }));
+        }
+
+        // Emblemas de temporada concedidos por el servidor. Si el elegido ya no vale, vuelve al de por defecto.
+        private void UpdateAwards(List<string> awards)
+        {
+            if (awards == null) return;
+            bool changed = awards.Count != save.awards.Count;
+            foreach (var a in awards) if (!save.awards.Contains(a)) changed = true;
+            if (!changed) return;
+            save.awards = new List<string>(awards);
+            ValidateLook();
+            save.Save();
+            RefreshMenuCollection();
+        }
+
+        private void ValidateLook()
+        {
+            if (!Collection.EmblemUnlocked(save.emblem, save.lifetimePoints, save.awards)) save.emblem = Emblems.DefaultEmblem;
+            if (!Collection.NameColorUnlocked(save.nameColor, save.lifetimePoints)) save.nameColor = Emblems.DefaultNameColor;
+        }
+
+        // Al arrancar: emblemas ganados y aspecto guardado en el servidor
+        private System.Collections.IEnumerator SyncProfile()
+        {
+            if (!OnlineEnabled) yield break;
+            EnsureIdentity();
+            ProfileResponse got = null;
+            yield return OnlineApi.GetProfile(cfg, save.playerId, r => got = r);
+            if (got == null || !got.ok) yield break;
+            UpdateAwards(got.awards);
+            if (got.look != CurrentLook && (save.emblem != Emblems.DefaultEmblem || save.nameColor != Emblems.DefaultNameColor || !string.IsNullOrEmpty(got.look)))
+                PushLook();
         }
     }
 }

@@ -24,7 +24,7 @@ namespace Colorify
             }
         }
 
-        public enum Kind { Color, Theme }
+        public enum Kind { Color, Theme, Emblem, NameColor }
 
         public class Item
         {
@@ -33,6 +33,8 @@ namespace Colorify
             public long cost;   // puntos acumulados para desbloquearlo
             public ColorifyConfig.ColorFamily family;   // si es un color
             public Theme theme;                         // si es un tema
+            public Emblems.Emblem emblem;               // si es un emblema
+            public Emblems.NameColor nameColor;         // si es un color de nombre
         }
 
         public static readonly Theme DefaultTheme = new Theme("paper", "Paper", "F3EEE6", "E6DFD3", "3B3836", "8A847D", "D96C5F",
@@ -53,25 +55,80 @@ namespace Colorify
             new ColorifyConfig.ColorFamily(id, name, hue, l, c, 10, 5f);   // poco frecuentes: peso 5 (azul 30, rojo 6)
 
         // Escalera de desbloqueos, colores y temas intercalados (puntos acumulados en Normal)
+        // Escalera de desbloqueos (puntos acumulados en Normal): temas, colores, emblemas y colores de nombre
+        // intercalados para que siempre haya algo cerca. El primero llega en la primera partida (que es corta).
         public static readonly Item[] Ladder =
         {
-            ThemeItem(600, "sage"),   // el primero llega en la primera partida (corta): engancha en los primeros minutos
+            ThemeItem(600, "sage"),
+            EmblemItem(1500, "drop"),
             ColorItem(3000, Rare("lavender", "Lavender", 300f, 0.72f, 0.10f)),
+            NameItem(4500, "teal"),
             ColorItem(7000, Rare("rose", "Rose", 355f, 0.74f, 0.10f)),
+            EmblemItem(9000, "gem"),
             ThemeItem(12000, "blush"),
+            NameItem(16000, "coral"),
             ColorItem(20000, Rare("mint", "Mint", 170f, 0.85f, 0.08f)),
+            EmblemItem(25000, "peak"),
             ColorItem(30000, Rare("sky", "Sky", 230f, 0.80f, 0.08f)),
+            NameItem(37000, "amber"),
             ThemeItem(45000, "mist"),
+            EmblemItem(52000, "eye"),
             ColorItem(60000, Rare("sand", "Sand", 80f, 0.82f, 0.06f)),
+            NameItem(70000, "rose"),
             ColorItem(80000, Rare("lime", "Lime", 122f, 0.84f, 0.12f)),
+            EmblemItem(90000, "prism"),
             ThemeItem(100000, "lavender"),
+            NameItem(112000, "lavender"),
             ColorItem(125000, Rare("terracotta", "Terracotta", 40f, 0.60f, 0.10f)),
+            EmblemItem(137000, "block"),
             ColorItem(150000, Rare("plum", "Plum", 325f, 0.60f, 0.11f)),
+            NameItem(165000, "sky"),
             ThemeItem(180000, "sand"),
+            EmblemItem(200000, "orbit"),
             ColorItem(215000, Rare("indigo", "Indigo", 275f, 0.58f, 0.11f)),
+            NameItem(235000, "sage"),
             ColorItem(255000, Rare("slate", "Slate", 250f, 0.62f, 0.04f)),
+            EmblemItem(280000, "spectrum"),
             ThemeItem(300000, "clay"),
+            NameItem(350000, "rainbow"),
+            EmblemItem(400000, "crown"),
         };
+
+        private static Item EmblemItem(long cost, string id)
+        {
+            var e = Emblems.Get(id);
+            return new Item { id = "emblem." + id, name = e.name, kind = Kind.Emblem, cost = cost, emblem = e };
+        }
+
+        private static Item NameItem(long cost, string id)
+        {
+            var c = Emblems.GetNameColor(id);
+            return new Item { id = "name." + id, name = c.name, kind = Kind.NameColor, cost = cost, nameColor = c };
+        }
+
+        // ¿Puede usarlo? Los de por defecto siempre; los de temporada, si el servidor los ha concedido
+        public static bool EmblemUnlocked(string id, long lifetime, ICollection<string> awards)
+        {
+            if (id == Emblems.DefaultEmblem) return true;
+            int season, place;
+            if (Emblems.TryParseSeason(id, out season, out place)) return awards != null && awards.Contains(id);
+            foreach (var it in Ladder) if (it.kind == Kind.Emblem && it.emblem.id == id) return lifetime >= it.cost;
+            return false;
+        }
+
+        public static bool NameColorUnlocked(string id, long lifetime)
+        {
+            if (id == Emblems.DefaultNameColor) return true;
+            foreach (var it in Ladder) if (it.kind == Kind.NameColor && it.nameColor.id == id) return lifetime >= it.cost;
+            return false;
+        }
+
+        public static long CostOf(Kind kind, string id)
+        {
+            foreach (var it in Ladder)
+                if (it.kind == kind && ((kind == Kind.Emblem && it.emblem.id == id) || (kind == Kind.NameColor && it.nameColor.id == id))) return it.cost;
+            return 0;
+        }
 
         private static Item ColorItem(long cost, ColorifyConfig.ColorFamily f) =>
             new Item { id = "color." + f.id, name = f.displayName, kind = Kind.Color, cost = cost, family = f };
@@ -126,7 +183,8 @@ namespace Colorify
             return list;
         }
 
-        public static string KindLabel(Item it) => it.kind == Kind.Theme ? "THEME" : "COLOR";
+        public static string KindLabel(Item it) =>
+            it.kind == Kind.Theme ? "THEME" : it.kind == Kind.Emblem ? "EMBLEM" : it.kind == Kind.NameColor ? "NAME COLOR" : "COLOR";
 
         public static Color Hex(string hex)
         {

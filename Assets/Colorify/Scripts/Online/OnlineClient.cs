@@ -47,16 +47,33 @@ namespace Colorify.Online
     public class TuningResponse { public bool ok; public float pace = 1f; public List<TuningCode> codes = new List<TuningCode>(); }
 
     [Serializable]
-    public class ScoreRow { public int rank; public string name; public long score; public string info; public bool me; }
+    public class ScoreRow { public int rank; public string name; public long score; public string info; public bool me; public string look; }
 
     [Serializable]
     public class MyRank { public int rank; public long best; }
 
     [Serializable]
-    public class ScoresResponse { public bool ok; public string mode; public int total; public List<ScoreRow> top = new List<ScoreRow>(); public MyRank me; public string error; }
+    public class ScoresResponse
+    {
+        public bool ok; public string mode; public int total; public List<ScoreRow> top = new List<ScoreRow>(); public MyRank me; public string error;
+        public int season; public long seasonEnds; public List<string> awards = new List<string>();   // temporada en curso y emblemas ganados
+
+        // Milisegundos hasta el final de la temporada (si el servidor no lo dice, hasta el día 1 del mes que viene)
+        public long SeasonMsLeft()
+        {
+            long now = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
+            if (seasonEnds > now) return seasonEnds - now;
+            var n = DateTime.UtcNow;
+            var end = new DateTime(n.Year, n.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+            return (long)(end - n).TotalMilliseconds;
+        }
+    }
 
     [Serializable]
-    public class SubmitResponse { public bool ok; public int rank; public long best; public string error; }
+    public class SubmitResponse { public bool ok; public int rank; public long best; public string error; public List<string> awards = new List<string>(); }
+
+    [Serializable]
+    public class ProfileResponse { public bool ok; public string look, error; public List<string> awards = new List<string>(); public int season; public long seasonEnds; }
 
     // Conexión con el servidor de Kovu's Pride en el portfolio: ranking global (HTTP) y duelos (WebSocket).
     public static class OnlineApi
@@ -118,7 +135,7 @@ namespace Colorify.Online
 
         // samples: [tamaño, ms, tamaño, ms, …] de cada acierto y misses: [tamaño, fallos, …], para que el bot aprenda
         public static IEnumerator SubmitScore(ColorifyConfig cfg, string player, string name, string mode, long score, string info,
-            List<int> samples, List<int> misses, Action<SubmitResponse> done, int playMs = 0, string end = null)
+            List<int> samples, List<int> misses, Action<SubmitResponse> done, int playMs = 0, string end = null, string look = null)
         {
             var sb = new StringBuilder("{");
             sb.Append("\"player\":\"").Append(player).Append("\",\"name\":\"").Append(Escape(name)).Append("\",\"mode\":\"").Append(mode)
@@ -128,6 +145,7 @@ namespace Colorify.Online
             if (!string.IsNullOrEmpty(end)) sb.Append(",\"end\":\"").Append(end).Append('"');
             if (samples != null && samples.Count >= 2) AppendArray(sb, "samples", samples);
             if (misses != null && misses.Count >= 2) AppendArray(sb, "misses", misses);
+            if (look != null) sb.Append(",\"look\":\"").Append(Escape(look)).Append('"');
             sb.Append('}');
             SubmitResponse r = null;
             yield return PostJson(cfg, "scores", sb.ToString(), text =>
@@ -136,6 +154,31 @@ namespace Colorify.Online
             });
             if (r != null && !r.ok) Debug.LogWarning("[Online] Puntuación rechazada: " + r.error);
             done?.Invoke(r);
+        }
+
+        // Aspecto en el ranking (emblema y color del nombre); responde con los emblemas de temporada ganados
+        public static IEnumerator SetLook(ColorifyConfig cfg, string player, string look, Action<ProfileResponse> done)
+        {
+            string json = "{\"player\":\"" + player + "\",\"look\":\"" + Escape(look) + "\"}";
+            ProfileResponse r = null;
+            yield return PostJson(cfg, "look", json, text =>
+            {
+                if (!string.IsNullOrEmpty(text)) try { r = JsonUtility.FromJson<ProfileResponse>(text); } catch (Exception) { }
+            });
+            done?.Invoke(r);
+        }
+
+        public static IEnumerator GetProfile(ColorifyConfig cfg, string player, Action<ProfileResponse> done)
+        {
+            using (var req = UnityWebRequest.Get(BaseUrl(cfg) + "/api/colorify/profile?player=" + UnityWebRequest.EscapeURL(player ?? "")))
+            {
+                req.timeout = 8;
+                yield return req.SendWebRequest();
+                ProfileResponse r = null;
+                if (req.result == UnityWebRequest.Result.Success)
+                    try { r = JsonUtility.FromJson<ProfileResponse>(req.downloadHandler.text); } catch (Exception) { }
+                done?.Invoke(r);
+            }
         }
 
         private static void AppendArray(StringBuilder sb, string key, List<int> values)

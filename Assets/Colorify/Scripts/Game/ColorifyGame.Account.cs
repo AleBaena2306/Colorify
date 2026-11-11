@@ -29,7 +29,11 @@ namespace Colorify
 
         private string sessionName;   // nombre escrito sin cuenta (solo esta sesión)
         private bool SignedIn => !string.IsNullOrEmpty(save.accountToken);
-        private string CurrentName => SignedIn && !string.IsNullOrEmpty(save.accountName) ? save.accountName
+        // Sin servidor propio (Playgama) el jugador registra su nombre en el propio juego y se guarda (save.localName)
+        private static bool LocalProfile => !KovusPride.Publishing.StorePlatform.AllowsOwnServer;
+        private bool CanRename => KovusPride.Publishing.StorePlatform.AllowsExternalLogin || LocalProfile;
+        private string CurrentName => LocalProfile && !string.IsNullOrEmpty(save.localName) ? save.localName
+            : SignedIn && !string.IsNullOrEmpty(save.accountName) ? save.accountName
             : !string.IsNullOrEmpty(sessionName) ? sessionName : PlatformName ?? save.playerName;
 
         // En los portales con cuenta (CrazyGames), el nombre de la cuenta: así los amigos se reconocen. Si el servidor
@@ -176,11 +180,22 @@ namespace Colorify
             if (nameInput != null) nameInput.DeactivateInputField();
             Hide(nameEditor);
             onlineName.text = CurrentName;
+            if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
         }
 
         private void RefreshAccountUI()
         {
             bool signed = SignedIn;
+            if (!KovusPride.Publishing.StorePlatform.AllowsExternalLogin)
+            {
+                // Portales: sin Google. En Playgama el nombre se queda guardado en este dispositivo.
+                nameNote.text = "Your name and look are saved on this device.";
+                accountLabel.text = "";
+                googleButton.gameObject.SetActive(false);
+                signOutButton.gameObject.SetActive(false);
+                deleteButton.gameObject.SetActive(false);
+                return;
+            }
             nameNote.text = signed
                 ? "Your name is saved to your account and nobody else can use it."
                 : "Without an account, your name lasts until you close the game.\nSign in with Google to keep your name, trophies and records on any device.";
@@ -234,6 +249,8 @@ namespace Colorify
                 }));
                 return;
             }
+            // Perfil local (Playgama): el nombre registrado se guarda en este dispositivo
+            if (LocalProfile) { save.localName = name; save.Save(); AfterNameChange(); return; }
             // Sin cuenta: el generado se guarda; uno escrito, solo esta sesión
             if (PlayerNames.IsValid(name)) { save.playerName = name; save.Save(); sessionName = null; }
             else sessionName = name;
@@ -244,6 +261,7 @@ namespace Colorify
         {
             CloseDuel();   // la próxima conexión se presenta con el nombre nuevo
             onlineName.text = CurrentName;
+            if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
             nameStatus.text = $"<color=#{ColorUtility.ToHtmlStringRGB(ColorifyView.TitleColors[2])}>Saved!</color>";
             juice.Punch(nameBox, 0.1f);
         }

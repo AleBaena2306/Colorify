@@ -31,7 +31,12 @@ namespace Colorify
         public List<int> recentRunSeconds = new List<int>();     // duración de las últimas partidas de Normal
         public long lifetimePoints;                              // puntos acumulados en Normal (desbloqueos, Collection)
         public string theme = "paper";                           // tema de la interfaz elegido
-        public int seenUnlocks;                                  // desbloqueos ya vistos en COLLECTION (aviso NEW)
+        public int seenUnlocks;                                  // (antiguo) desbloqueos vistos por orden; ahora seenItems
+        public List<string> seenItems = new List<string>();      // desbloqueos ya vistos en COLLECTION (aviso NEW)
+        public string emblem = "dot", nameColor = "ink";         // aspecto en el ranking (Emblems)
+        public List<string> awards = new List<string>();         // emblemas de temporada ganados (los da el servidor)
+        public List<string> seenAwards = new List<string>();     // los ya vistos (aviso NEW)
+        public string localName = "";                            // nombre registrado sin servidor propio (Playgama)
         public bool soundOn = true;
         public bool vibrationOn = true;
         public List<RunRecord> topRuns = new List<RunRecord>();

@@ -83,6 +83,7 @@ namespace Colorify
             Application.targetFrameRate = 60;
             cfg = ColorifyConfig.Load();
             save = SaveData.Load();
+            ValidateLook();
             Sfx.Enabled = save.soundOn;
             Haptics.Enabled = save.vibrationOn;
 
@@ -112,6 +113,7 @@ namespace Colorify
             };
             StorePlatform.GameReady();
             StartCoroutine(LoadTuning());
+            StartCoroutine(SyncProfile());   // emblemas de temporada ganados y aspecto en el ranking
         }
 
         // Servidor propio (rankings, online, ritmo aprendido): no en las plataformas que no lo permiten (Playgama)
