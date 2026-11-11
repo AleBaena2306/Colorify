@@ -38,3 +38,12 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
   volver a la pestaña y con cada toque); el estado de audio se leía en preload y un «audio activado» anterior a los
   listeners se perdía (ahora se lee en vivo cada 1,5 s); había más «interstitial opened» que «closed» (ahora un anuncio
   cerrado sin aviso se da por terminado y se levanta su pausa).
+
+## 11/11/2026 · CrazyGames · 0.01 · RECHAZADO en la revisión de Basic Launch
+- Correo: «for now it won't be moving forward to release on our platform». Motivo del equipo: «The overall quality of
+  the game does not yet meet the expectations of our platform». Remiten a sus «New games» como ejemplo y a sus
+  requisitos y guías de calidad. Sin fallos técnicos concretos.
+- Su FAQ permite volver a enviarlo solo con mejoras importantes; quien envía repetidamente juegos que no cumplen puede
+  tener restricciones. No se reenvía hasta tener una versión claramente mejor (y con una lista de cambios).
+- Hipótesis propias (sin confirmar por CrazyGames): aspecto de prototipo (casillas planas, el HUD de partida se ve
+  detrás del menú), género «encuentra el color» con muchos clones, primeros segundos poco vistosos, vídeos con cursor.
