@@ -33,13 +33,22 @@ namespace Colorify
             menuOnline.gameObject.SetActive(online);
             menuRanking.gameObject.SetActive(ranking);
             float rowY = online ? -430f : -200f;
-            UIKit.Place((RectTransform)menuRanking.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, rowY));
-            UIKit.Place((RectTransform)menuSound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(ranking ? 215 : 0, rowY));
+            // Fila de abajo: RANKING (si hay), COLLECTION y SOUND
+            var row = new List<Button>();
+            if (ranking) row.Add(menuRanking);
+            if (menuCollection != null) row.Add(menuCollection);
+            row.Add(menuSound);
+            float w = row.Count >= 3 ? 310f : 400f, step = w + 25f;
+            for (int i = 0; i < row.Count; i++)
+                UIKit.Place((RectTransform)row[i].transform, 0.5f, 0.5f, new Vector2(w, 110), new Vector2((i - (row.Count - 1) * 0.5f) * step, rowY));
             if (onlineLbButton != null) onlineLbButton.gameObject.SetActive(ranking);
         }
         private Ads ads;
         private SaveData save;
         private readonly System.Random rng = new System.Random();
+        private RunDirector director;              // solo modo Normal en solitario
+        private RunDirector.Board dirBoard;        // lo que ha decidido el director para el tablero actual
+        private bool overNearRecord;               // la última partida acabó cerca del récord (o lo batió)
 
         private enum Mode { Normal, Survival, Online, Race }
 
@@ -76,6 +85,7 @@ namespace Colorify
             Sfx.Enabled = save.soundOn;
             Haptics.Enabled = save.vibrationOn;
 
+            ApplyTheme(Collection.ThemeUnlocked(save.theme, save.lifetimePoints) ? Collection.ThemeById(save.theme) : Collection.DefaultTheme, recolor: false);
             if (Camera.main != null) Camera.main.backgroundColor = UIKit.Paper;
             v = new ColorifyView(transform);
             juice = gameObject.AddComponent<Juice>();
@@ -144,6 +154,7 @@ namespace Colorify
             UIKit.Place((RectTransform)best.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(-215, -430));
             var sound = UIKit.Button("Sound", v.menu.transform, "", ColorifyView.TitleColors[0], new Vector2(400, 110), ToggleSound, 46);
             UIKit.Place((RectTransform)sound.transform, 0.5f, 0.5f, new Vector2(400, 110), new Vector2(215, -430));
+            menuCollection = UIKit.Button("Collection", v.menu.transform, "COLLECTION", ColorifyView.TitleColors[4], new Vector2(400, 110), ShowCollection, 40);
             v.menuSoundLabel = sound.GetComponentInChildren<TMPro.TextMeshProUGUI>();
             menuOnline = onlineBtn;
             menuRanking = best;
@@ -206,15 +217,17 @@ namespace Colorify
             UIKit.Place(v.overBest.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 360));
             v.overInfo = UIKit.Text("Info", v.gameOver.transform, "", 44, UIKit.InkSoft);
             UIKit.Place(v.overInfo.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 280));
+            overUnlock = UIKit.Text("Unlock", v.gameOver.transform, "", 38, UIKit.Ink, black: true);
+            UIKit.Place(overUnlock.rectTransform, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
             v.overCardsRow = UIKit.Rect("Cards", v.gameOver.transform);
             UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
             v.overContinue = UIKit.Button("Continue", v.gameOver.transform, ContinueLabel, ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
             UIKit.Place((RectTransform)v.overContinue.transform, 0.5f, 0.5f, new Vector2(820, 150), new Vector2(0, 10));
             // En los portales, al salir de la pantalla de fin de partida puede tocar un intersticial (la capa de
             // publicación decide: nunca en partida, como mucho uno cada 3 minutos)
-            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); var m = mode; StorePlatform.ShowInterstitial("game_over", () => StartRun(m)); }, 70);
+            var again = UIKit.Button("Again", v.gameOver.transform, "PLAY AGAIN", ColorifyView.TitleColors[3], new Vector2(560, 160), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); var m = mode; StorePlatform.ShowInterstitial("game_over", () => StartRun(m), overNearRecord); }, 70);
             UIKit.Place((RectTransform)again.transform, 0.5f, 0.5f, new Vector2(560, 160), new Vector2(0, -180));
-            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); StorePlatform.ShowInterstitial("game_over", () => ShowMenu()); }, 50);
+            var toMenu = UIKit.Button("Menu", v.gameOver.transform, "MENU", UIKit.PaperDark, new Vector2(420, 120), () => { if (StorePlatform.AdShowing) return; FinishRun("lose"); StorePlatform.ShowInterstitial("game_over", () => ShowMenu(), overNearRecord); }, 50);
             UIKit.Place((RectTransform)toMenu.transform, 0.5f, 0.5f, new Vector2(420, 120), new Vector2(0, -350));
 
             // --- Victoria (primera ronda 8×8 superada) ---
@@ -236,6 +249,8 @@ namespace Colorify
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
 
             BuildOnlineOverlays();
+            BuildCollectionOverlay();
+            ApplyPlatformMenu();
             RefreshToggles();
         }
 
@@ -250,6 +265,7 @@ namespace Colorify
         {
             System.Action<CanvasGroup, System.Action> Add = (cg, a) => { if (cg != null) backActions.Add(new BackEntry { cg = cg, back = a }); };
             Add(v.history, HideHistory);
+            Add(collection, HideCollection);
             Add(v.gameOver, () => { FinishRun("lose"); ShowMenu(); });
             Add(onlineMenu, () => { sfx.Play(Sfx.Id.Click); ShowMenu(); });
             Add(duelMenu, () => { sfx.Play(Sfx.Id.Click); Hide(duelMenu); Show(onlineMenu); });
@@ -289,7 +305,7 @@ namespace Colorify
             state = State.Menu;
             run = null;
             normal = null;
-            foreach (var cg in new[] { v.pause, v.cards, v.nextRound, v.gameOver, v.victory, v.history }) Hide(cg, instant);
+            foreach (var cg in new[] { v.pause, v.cards, v.nextRound, v.gameOver, v.victory, v.history, collection }) if (cg != null) Hide(cg, instant);
             LeaveOnline(instant);
             var bests = new List<string>();
             if (save.bestNormalPoints > 0) bests.Add($"{UIKit.Thousands(save.bestNormalPoints)} PTS");
@@ -363,6 +379,10 @@ namespace Colorify
             mode = m;
             run = m == Mode.Survival ? new RunState(cfg) : null;
             normal = m == Mode.Normal ? new NormalRun(cfg, specials: true) : null;
+            director = m == Mode.Normal
+                ? new RunDirector(save.bestNormalPoints, save.normalRunsPlayed, RunDirector.Median(save.recentRunSeconds), rng)
+                : null;
+            dirBoard = default;
             if (normal != null)
             {
                 roundTime = normal.MaxTime < float.MaxValue ? normal.MaxTime : normal.StartTime;
@@ -410,7 +430,9 @@ namespace Colorify
                 chainUp = normal.chain > chainBefore;
                 if (normal.chain > normal.bestChain) normal.bestChain = normal.chain;
                 pts = Points.ForHit(cfg, Tuning.Current, current.size, boardKind, reactionMs, normal.chain, normal.hits);
+                if (director != null) pts = director.AdjustPoints(pts, normal.points);
                 normal.points += pts;
+                director?.OnHit(reactionMs, Tuning.Current.ExpectedMs(current.size, boardKind), normal.chain, cfg.chainMax, normal.points);
             }
             normal.hits++;
             normal.streak++;
@@ -422,7 +444,7 @@ namespace Colorify
             timeLeft = Mathf.Min(Mathf.Max(timeLeft + bonus, floor), normal.MaxTime);
             bonus = timeLeft - before;
             if (normal.MaxTime == float.MaxValue) roundTime = Mathf.Max(roundTime, timeLeft);
-            RecordHit(code);
+            RecordHit(code, sample: !dirBoard.Manipulated);   // los tableros del director no enseñan al servidor
             if (mode == Mode.Online) duel?.Hit(normal.hits, timeLeft, code);
 
             Color col = current.TargetColor;
@@ -627,7 +649,13 @@ namespace Colorify
             {
                 var previous = normal.kind;
                 normal.kind = Progression.Pick(cfg, Tuning.Current, normal.hits, previous, rng);
-                current = ColorBoardGenerator.GenerateWith(cfg, normal.GridSize, normal.MinSeparation, cfg.normalSameFamily, f => cfg.families[f].spawnWeight, rng);
+                // Director (solo Normal en solitario): recta final más fácil hacia el récord y remates difíciles
+                dirBoard = director != null ? director.Next(normal.points, RunDuration()) : default;
+                if (dirBoard.mood == RunDirector.Mood.Ease) normal.kind.fx = Effect.None;
+                else if (dirBoard.mood == RunDirector.Mood.Lethal) normal.kind.fx = Progression.HardestUnlocked(cfg, Tuning.Current, normal.hits);
+                float sep = normal.MinSeparation * (dirBoard.Manipulated ? dirBoard.separationScale : 1f);
+                var colors = SoloColors;
+                current = ColorBoardGenerator.GenerateWith(colors, normal.GridSize, sep, cfg.normalSameFamily, f => colors.families[f].spawnWeight, rng);
                 ShowBoard(current);
                 ApplyKind(normal.kind);
                 // Aviso grande al entrar en un especial nuevo o al crecer la cuadrícula
@@ -846,7 +874,7 @@ namespace Colorify
             if (normal != null)
             {
                 int code = boardKind.Code(current.size);
-                RecordMiss(code);
+                if (!dirBoard.Manipulated) RecordMiss(code);
                 if (mode == Mode.Online) duel?.Miss(normal.hits, timeLeft, code);
                 // Memoria y encoger: al fallar, la muestra se vuelve a ver un momento
                 PeekSwatchAfterMiss();
@@ -1120,6 +1148,7 @@ namespace Colorify
             var ids = new List<string>();
             foreach (var c in run.cards) ids.Add(c.Id(cfg));
             ColorifyView.MiniCards(v.overCardsRow, ids, cfg);
+            if (overUnlock != null) overUnlock.text = "";
 
             bool nearRecord = save.bestScore > 0 && run.totalScore >= save.bestScore * cfg.continueNearRecordFraction;
             bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
@@ -1139,11 +1168,18 @@ namespace Colorify
             v.overBest.text = isRecord ? "NEW BEST!" : "BEST " + UIKit.Thousands(save.bestNormalPoints);
             v.overInfo.text = $"{normal.hits} hits  ·  best combo x{normal.bestChain}  ·  {normal.misses} misses";
             ColorifyView.MiniCards(v.overCardsRow, null, cfg);
+            ShowUnlockLine(normal.points);
             bool nearRecord = save.bestNormalPoints > 0 && normal.points >= save.bestNormalPoints * cfg.continueNearRecordFraction;
+            // «Te faltaron X puntos»: el récord a la vista invita a otra partida
+            if (!isRecord && nearRecord)
+                v.overBest.text = $"ONLY {UIKit.Thousands(save.bestNormalPoints - normal.points)} PTS FROM YOUR BEST!";
+            overNearRecord = nearRecord || isRecord;
             bool everyFew = save.runsSinceContinueOffer >= cfg.continueEveryRuns - 1;
-            bool offer = !normal.continueUsed && ads.IsReady && (nearRecord || everyFew);
+            // Cerca del récord el «continuar» se ofrece siempre; a quien acepta casi siempre, hasta dos veces por partida
+            int maxContinues = save.continueOffers >= 4 && save.continueAccepts >= 0.75f * save.continueOffers ? 2 : 1;
+            bool offer = normal.continuesUsed < maxContinues && ads.IsReady && (nearRecord || isRecord || everyFew);
             v.overContinue.gameObject.SetActive(offer);
-            if (offer) continueOffered = true;
+            if (offer) { continueOffered = true; save.continueOffers++; }
             Show(v.gameOver);
             if (isRecord) juice.Punch(v.overBest.transform, 0.3f, 0.4f);
             if (!offer) FinishRun("lose");
@@ -1151,7 +1187,7 @@ namespace Colorify
 
         private void ContinueWithAd()
         {
-            if (state == State.GameOver && normal != null && !normal.continueUsed) { ContinueNormal(); return; }
+            if (state == State.GameOver && normal != null) { ContinueNormal(); return; }   // el botón solo sale si quedan
             if (state != State.GameOver || run == null || run.continueUsed) return;
             SetContinueLabel("LOADING AD...", false);
             ads.ShowRewarded("continue", rewarded =>
@@ -1208,8 +1244,17 @@ namespace Colorify
                 if (!rewarded) { ContinueFailed(); return; }
                 SetContinueLabel(ContinueLabel, true);
                 normal.continueUsed = true;
+                normal.continuesUsed++;
+                save.continueAccepts++;
                 Hide(v.gameOver);
                 timeLeft = Mathf.Min(normal.StartTime, normal.MaxTime);
+                // Bonus por volver (RunDirector): un empujón de puntos que hace apetecible el «continuar»
+                long bonus = director != null ? director.ReviveBonus() : 0;
+                if (bonus > 0)
+                {
+                    normal.points += bonus;
+                    juice.FloatText(v.scoreText.transform.position + Vector3.down * 90f, "BONUS +" + UIKit.Thousands(bonus), ColorifyView.TitleColors[3], 90f, 200f);
+                }
                 StartCoroutine(CountdownThen(() =>
                 {
                     lastTickSecond = -1;
@@ -1234,6 +1279,9 @@ namespace Colorify
                 SubmitOnline("points", normal.points, $"{normal.hits} hits", hitSamples, missSamples,
                     Mathf.RoundToInt(normalPlayMs), result == "quit" ? "quit" : "time");
                 save.normalRunsPlayed++;
+                save.lifetimePoints += normal.points;
+                save.recentRunSeconds.Add(RunDuration());
+                while (save.recentRunSeconds.Count > 7) save.recentRunSeconds.RemoveAt(0);
                 if (normal.hits > save.bestNormalHits) save.bestNormalHits = normal.hits;
                 if (normal.points > save.bestNormalPoints) save.bestNormalPoints = normal.points;
                 StorePlatform.SubmitScore("best", save.bestNormalPoints);   // clasificación de la plataforma, si la tiene
@@ -1241,8 +1289,11 @@ namespace Colorify
                 save.Save();
                 Analytics.Log("game_end", ("mode", "normal"), ("level_id", "run"), ("duration_sec", RunDuration()), ("result", result),
                     ("hits", normal.hits), ("points", normal.points), ("best_combo", normal.bestChain), ("misses", normal.misses), ("best_streak", normal.bestStreak), ("grid", normal.GridSize),
-                    ("continue_used", normal.continueUsed));
+                    ("continue_used", normal.continueUsed),
+                    ("dir_ease", director != null ? director.EaseBoards : 0), ("dir_lethal", director != null ? director.LethalBoards : 0),
+                    ("dir_cut_points", director != null ? director.CutPoints : 0));
                 normal = null;
+                director = null;
                 return;
             }
             if (run == null) return;

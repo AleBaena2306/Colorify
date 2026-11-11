@@ -229,9 +229,12 @@ namespace KovusPride.Publishing
               Time.realtimeSinceStartup - lastAdTime >= InterstitialMinSeconds));
 
         // done siempre se llama (también si no toca anuncio), así el juego puede seguir en el mismo sitio
-        public static void ShowInterstitial(string placement, Action done)
+        // skipOwnPacing: el juego pide el anuncio aunque no hayan pasado los minutos propios entre intersticiales
+        // (el SDK de cada portal sigue mandando sobre su propia frecuencia). Colorify lo usa al perder cerca del récord.
+        public static void ShowInterstitial(string placement, Action done, bool skipOwnPacing = false)
         {
-            if (!CanShowInterstitial) { done?.Invoke(); return; }
+            bool can = skipOwnPacing ? Ready && InterstitialAvailable && !AdShowing && !GameplayActive : CanShowInterstitial;
+            if (!can) { done?.Invoke(); return; }
             StartAd("interstitial", placement, _ => done?.Invoke());
         }
 

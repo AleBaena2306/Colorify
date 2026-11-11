@@ -10,6 +10,7 @@ namespace Colorify
         public readonly ColorifyConfig cfg;
         public int hits, misses, streak, bestStreak;
         public bool continueUsed;
+        public int continuesUsed;   // normalmente 1 como mucho; 2 si el jugador acepta casi siempre (RunDirector)
         // Reglas nuevas (modo Normal): calentamiento, cuadrícula hasta 5×5, formas y efectos especiales y puntos.
         // El duelo 1v1 las tiene desactivadas y sigue con las de siempre (aciertos y rayas/memoria por tamaño).
         public readonly bool specials;

@@ -27,6 +27,10 @@ namespace Colorify
         public int normalRunsPlayed;
         public int runsPlayed;
         public int runsSinceContinueOffer;
+        public int continueOffers, continueAccepts;              // para el «continuar» extra (RunDirector)
+        public List<int> recentRunSeconds = new List<int>();     // duración de las últimas partidas de Normal
+        public long lifetimePoints;                              // puntos acumulados en Normal (desbloqueos, Collection)
+        public string theme = "paper";                           // tema de la interfaz elegido
         public bool soundOn = true;
         public bool vibrationOn = true;
         public List<RunRecord> topRuns = new List<RunRecord>();

@@ -11,11 +11,12 @@ namespace Colorify
     // Generalizable: candidato a KovusPride.UI (fábrica de UI en runtime y «juice» básico).
     public static class UIKit
     {
-        public static readonly Color Paper = new Color32(0xF3, 0xEE, 0xE6, 0xFF);     // fondo crema mate
-        public static readonly Color PaperDark = new Color32(0xE6, 0xDF, 0xD3, 0xFF);
-        public static readonly Color Ink = new Color32(0x3B, 0x38, 0x36, 0xFF);       // texto
-        public static readonly Color InkSoft = new Color32(0x8A, 0x84, 0x7D, 0xFF);
-        public static readonly Color Danger = new Color32(0xD9, 0x6C, 0x5F, 0xFF);
+        // Paleta del tema actual (Collection.Theme). Por defecto «Paper»; ColorifyGame.ApplyTheme la cambia.
+        public static Color Paper = new Color32(0xF3, 0xEE, 0xE6, 0xFF);     // fondo crema mate
+        public static Color PaperDark = new Color32(0xE6, 0xDF, 0xD3, 0xFF);
+        public static Color Ink = new Color32(0x3B, 0x38, 0x36, 0xFF);       // texto
+        public static Color InkSoft = new Color32(0x8A, 0x84, 0x7D, 0xFF);
+        public static Color Danger = new Color32(0xD9, 0x6C, 0x5F, 0xFF);
 
         private static Sprite rounded;
         private static TMP_FontAsset fontBold, fontBlack;

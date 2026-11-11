@@ -795,9 +795,9 @@ namespace Colorify
             normalPlayMs = lastHitMs = 0f;
         }
 
-        private void RecordHit(int size)
+        private void RecordHit(int size, bool sample = true)
         {
-            if (hitSamples.Count < 4000) { hitSamples.Add(size); hitSamples.Add(Mathf.RoundToInt(normalPlayMs - lastHitMs)); }
+            if (sample && hitSamples.Count < 4000) { hitSamples.Add(size); hitSamples.Add(Mathf.RoundToInt(normalPlayMs - lastHitMs)); }
             lastHitMs = normalPlayMs;
         }
 

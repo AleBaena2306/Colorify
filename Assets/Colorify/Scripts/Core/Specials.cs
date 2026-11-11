@@ -158,6 +158,16 @@ namespace Colorify
             return kind;
         }
 
+        // El efecto más difícil de los ya desbloqueados (lo usa RunDirector en los tableros «letales»)
+        public static Effect HardestUnlocked(ColorifyConfig cfg, Tuning tuning, int hits)
+        {
+            int warm = Mathf.Max(0, cfg.normalWarmupHits);
+            if (hits < warm) return Effect.None;
+            var order = tuning.UnlockOrder();
+            int unlocked = Mathf.Clamp(1 + (hits - warm) / Mathf.Max(1, cfg.normalUnlockEveryHits), 1, order.Count);
+            return Tuning.Items[order[unlocked - 1]].fx;
+        }
+
         // Lo recién desbloqueado pesa el doble y se evita repetir el efecto del tablero anterior
         private static int PickOne(List<int> order, int unlocked, int newest, BoardKind previous, System.Random rng)
         {
