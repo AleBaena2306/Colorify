@@ -115,6 +115,16 @@ namespace Colorify
             return recent.Count > 0 ? s / recent.Count : 1f;
         }
 
+        // Tiempo que corre más deprisa de lo normal (la barra muestra el tiempo real, así que no se nota un salto):
+        // un 15 % en los tableros letales y un 10 % una vez pasado el récord. Jugadores nuevos: nunca.
+        public const float LethalDrain = 1.15f, PastRecordDrain = 1.10f;
+        public float DrainScale(Mood current)
+        {
+            if (newPlayer) return 1f;
+            if (current == Mood.Lethal) return LethalDrain;
+            return passedRecord ? PastRecordDrain : 1f;
+        }
+
         // Puntos de un acierto tras el director (solo modo Normal en solitario)
         public int AdjustPoints(int pts, long points)
         {

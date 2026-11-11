@@ -180,6 +180,9 @@ namespace Colorify
         [Tooltip("Desplazamiento: unidades de pantalla por segundo (la pantalla mide 1080 de ancho)")]
         public float normalMoveSpeed = 360f;
 
+        [Tooltip("Modo Normal: ritmo de la primera partida de un jugador nuevo (0,6 = el 60 % del tiempo: dura más o menos la mitad)")]
+        [Range(0.2f, 1f)] public float firstRunPace = 0.6f;
+
         [Header("Modo Normal: puntos")]
         public float pointsBase = 37f;
         public float pointsPerGridStep = 14f;

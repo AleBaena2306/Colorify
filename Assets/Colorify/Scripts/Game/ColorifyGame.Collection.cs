@@ -12,9 +12,17 @@ namespace Colorify
         private CanvasGroup collection;
         private RectTransform collectionList;
         private TextMeshProUGUI collectionSub, overUnlock;
-        private Button menuCollection;
+        private Button menuCollection, menuNext;
+        private TextMeshProUGUI menuNextText;
+        private RectTransform menuNewBadge;
         private ColorifyConfig soloColors;
         private int soloColorsCount = -1;
+        private Collection.Theme previewing;   // tema bloqueado que se está probando unos segundos
+        private Coroutine previewRoutine;
+
+        // Puntos acumulados a mostrar: en la pantalla de fin de partida ya cuentan los de la partida que acaba de
+        // terminar (se guardan al salir de esa pantalla, por si el jugador continúa con anuncio)
+        private long LifetimeShown => save.lifetimePoints + (state == State.GameOver && normal != null && mode == Mode.Normal ? normal.points : 0);
 
         // Colores de los tableros de Normal en solitario: los de siempre más los raros ya desbloqueados
         private ColorifyConfig SoloColors
@@ -91,6 +99,46 @@ namespace Colorify
             UIKit.Place(collectionList, 0.5f, 0.5f, new Vector2(1000, 1180), new Vector2(0, -60));
             var back = UIKit.Button("Back", collection.transform, "BACK", UIKit.PaperDark, new Vector2(420, 120), HideCollection, 50);
             UIKit.Place((RectTransform)back.transform, 0.5f, 0f, new Vector2(420, 120), new Vector2(0, 110));
+
+            // Menú: lo siguiente que se desbloquea, con barra de progreso, y aviso NEW en el botón COLLECTION
+            menuNext = UIKit.Button("Next", v.menu.transform, "", UIKit.PaperDark, new Vector2(760, 64), ShowCollection, 30);
+            UIKit.Place((RectTransform)menuNext.transform, 0.5f, 0.5f, new Vector2(760, 64), new Vector2(0, 152));
+            menuNextText = menuNext.GetComponentInChildren<TextMeshProUGUI>();
+            if (menuCollection != null)
+            {
+                var badge = UIKit.Box("New", menuCollection.transform, ColorifyView.TitleColors[5], 2f);
+                UIKit.Place(badge.rectTransform, 1f, 1f, new Vector2(96, 46), new Vector2(-14, -2));
+                var bt = UIKit.Text("Label", badge.transform, "NEW", 28, UIKit.Paper, black: true);
+                UIKit.Stretch(bt.rectTransform);
+                menuNewBadge = badge.rectTransform;
+            }
+            // Fin de partida: la línea de desbloqueos lleva a COLLECTION
+            if (overUnlock != null)
+            {
+                overUnlock.raycastTarget = true;
+                overUnlock.gameObject.AddComponent<Button>().onClick.AddListener(ShowCollection);
+            }
+            RefreshMenuCollection();
+        }
+
+        private void RefreshMenuCollection()
+        {
+            if (menuNext == null || save == null) return;
+            long life = save.lifetimePoints;
+            var next = Collection.Next(life);
+            menuNext.gameObject.SetActive(next != null && save.normalRunsPlayed > 0);
+            if (next != null)
+            {
+                menuNextText.text = $"NEXT UNLOCK: {next.name.ToUpperInvariant()} {Collection.KindLabel(next)}  ·  " +
+                                    $"<color=#{ColorUtility.ToHtmlStringRGB(UIKit.InkSoft)}>{UIKit.Thousands(life)} / {UIKit.Thousands(next.cost)}</color>";
+            }
+            bool fresh = Collection.UnlockedCount(life) > save.seenUnlocks;
+            if (menuNewBadge != null)
+            {
+                bool was = menuNewBadge.gameObject.activeSelf;
+                menuNewBadge.gameObject.SetActive(fresh);
+                if (fresh && !was) juice.PopIn(menuNewBadge, 0.3f, 0.35f, 0.4f);
+            }
         }
 
         private void ShowCollection()
@@ -100,11 +148,17 @@ namespace Colorify
             Show(collection);
         }
 
-        private void HideCollection() { sfx.Play(Sfx.Id.Click); Hide(collection); }
+        private void HideCollection()
+        {
+            sfx.Play(Sfx.Id.Click);
+            EndPreview();
+            Hide(collection);
+            RefreshMenuCollection();
+        }
 
         private void RefreshCollection()
         {
-            long life = save.lifetimePoints;
+            long life = LifetimeShown;
             var next = Collection.Next(life);
             collectionSub.text = $"{UIKit.Thousands(life)} PTS EARNED IN NORMAL\n" +
                 (next != null ? $"Next: {next.name.ToUpperInvariant()} {Collection.KindLabel(next)} at {UIKit.Thousands(next.cost)}" : "Everything unlocked!");
@@ -115,11 +169,20 @@ namespace Colorify
             var colors = new List<Collection.Item>();
             themes.Add(new Collection.Item { id = "theme.paper", name = Collection.DefaultTheme.name, kind = Collection.Kind.Theme, cost = 0, theme = Collection.DefaultTheme });
             foreach (var it in Collection.Ladder) (it.kind == Collection.Kind.Theme ? themes : colors).Add(it);
-            Column("THEMES", themes, -250f, life);
-            Column("COLORS", colors, 250f, life);
+            int seen = save.seenUnlocks;
+            Column("THEMES", themes, -250f, life, seen);
+            Column("COLORS", colors, 250f, life, seen);
+            save.seenUnlocks = Mathf.Max(save.seenUnlocks, Collection.UnlockedCount(life));
         }
 
-        private void Column(string header, List<Collection.Item> items, float x, long life)
+        // ¿Es nuevo (desbloqueado y aún no visto en COLLECTION)? Por orden de la escalera
+        private static bool IsNew(Collection.Item it, long life, int seen)
+        {
+            int idx = System.Array.IndexOf(Collection.Ladder, it);
+            return idx >= seen && idx >= 0 && Collection.IsUnlocked(it, life);
+        }
+
+        private void Column(string header, List<Collection.Item> items, float x, long life, int seen)
         {
             var h = UIKit.Text("Header", collectionList, header, 40, UIKit.InkSoft, black: true);
             UIKit.Place(h.rectTransform, 0.5f, 1f, new Vector2(480, 60), new Vector2(x, -30));
@@ -128,8 +191,17 @@ namespace Colorify
                 var it = items[i];
                 bool unlocked = Collection.IsUnlocked(it, life);
                 bool inUse = it.kind == Collection.Kind.Theme && it.theme.id == CurrentThemeId;
+                bool isNew = IsNew(it, life, seen);
                 var row = UIKit.Box("Item" + i, collectionList, inUse ? UIKit.WithAlpha(ColorifyView.TitleColors[3], 0.45f) : UIKit.WithAlpha(UIKit.PaperDark, unlocked ? 0.95f : 0.45f), 0.7f, raycast: true);
                 UIKit.Place(row.rectTransform, 0.5f, 1f, new Vector2(480, 92), new Vector2(x, -110 - i * 104));
+                if (isNew)
+                {
+                    var badge = UIKit.Box("New", row.transform, ColorifyView.TitleColors[5], 2f);
+                    UIKit.Place(badge.rectTransform, 1f, 1f, new Vector2(84, 40), new Vector2(-10, 4));
+                    var bt = UIKit.Text("Label", badge.transform, "NEW", 24, UIKit.Paper, black: true);
+                    UIKit.Stretch(bt.rectTransform);
+                    juice.PopIn(row.transform, 0.1f + 0.05f * i, 0.4f, 0.7f);
+                }
 
                 // Muestra: el color, o los acentos del tema
                 if (it.kind == Collection.Kind.Color)
@@ -151,25 +223,54 @@ namespace Colorify
                 var name = UIKit.Text("Name", row.transform, it.name.ToUpperInvariant(), 36, unlocked ? UIKit.Ink : UIKit.InkSoft, black: true);
                 name.alignment = TextAlignmentOptions.Left;
                 UIKit.Place(name.rectTransform, 0f, 0.5f, new Vector2(330, 46), new Vector2(textX + 165, 14));
-                string state = !unlocked ? $"{UIKit.Thousands(it.cost)} PTS" : it.kind == Collection.Kind.Color ? "IN YOUR BOARDS" : inUse ? "IN USE" : "TAP TO USE";
+                string state = !unlocked ? (it.kind == Collection.Kind.Theme ? $"{UIKit.Thousands(it.cost)} PTS · TAP TO PREVIEW" : $"{UIKit.Thousands(it.cost)} PTS")
+                    : it.kind == Collection.Kind.Color ? "IN YOUR BOARDS" : inUse ? "IN USE" : "TAP TO USE";
                 var info = UIKit.Text("State", row.transform, state, 26, UIKit.InkSoft);
                 info.alignment = TextAlignmentOptions.Left;
                 UIKit.Place(info.rectTransform, 0f, 0.5f, new Vector2(330, 36), new Vector2(textX + 165, -22));
 
-                if (it.kind == Collection.Kind.Theme && unlocked && !inUse)
+                if (it.kind == Collection.Kind.Theme && !inUse)
                 {
                     var btn = row.gameObject.AddComponent<Button>();
                     var theme = it.theme;
-                    btn.onClick.AddListener(() => SelectTheme(theme));
+                    if (unlocked) btn.onClick.AddListener(() => SelectTheme(theme));
+                    else btn.onClick.AddListener(() => PreviewTheme(theme));   // probarlo unos segundos: dan ganas de ganarlo
                 }
             }
         }
 
         private string CurrentThemeId => string.IsNullOrEmpty(save.theme) ? Collection.DefaultTheme.id : save.theme;
 
+        private void PreviewTheme(Collection.Theme t)
+        {
+            EndPreview();
+            sfx.Play(Sfx.Id.Click);
+            previewing = t;
+            ApplyTheme(t, recolor: true);
+            collectionSub.text = $"PREVIEW · {t.name.ToUpperInvariant()} THEME\nKeep playing to unlock it!";
+            previewRoutine = StartCoroutine(EndPreviewSoon());
+        }
+
+        private System.Collections.IEnumerator EndPreviewSoon()
+        {
+            yield return new WaitForSecondsRealtime(2.5f);
+            previewRoutine = null;
+            EndPreview();
+            RefreshCollection();
+        }
+
+        private void EndPreview()
+        {
+            if (previewRoutine != null) { StopCoroutine(previewRoutine); previewRoutine = null; }
+            if (previewing == null) return;
+            previewing = null;
+            ApplyTheme(Collection.ThemeById(CurrentThemeId), recolor: true);
+        }
+
         private void SelectTheme(Collection.Theme t)
         {
-            if (!Collection.ThemeUnlocked(t.id, save.lifetimePoints)) return;
+            EndPreview();
+            if (!Collection.ThemeUnlocked(t.id, LifetimeShown)) return;
             sfx.Play(Sfx.Id.Card);
             save.theme = t.id;
             save.Save();
@@ -188,7 +289,7 @@ namespace Colorify
             {
                 var names = new List<string>();
                 foreach (var it in news) names.Add($"{it.name.ToUpperInvariant()} {Collection.KindLabel(it)}");
-                overUnlock.text = ColorifyView.RainbowTitle("UNLOCKED: ") + string.Join(" · ", names) + "!";
+                overUnlock.text = ColorifyView.RainbowTitle("UNLOCKED: ") + string.Join(" · ", names) + "!\n<size=75%>TAP TO SEE IT</size>";
                 juice.PopIn(overUnlock.transform, 0.2f, 0.35f, 1.3f);
                 sfx.Play(Sfx.Id.Card);
                 return;

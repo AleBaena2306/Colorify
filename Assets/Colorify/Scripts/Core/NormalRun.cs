@@ -18,11 +18,11 @@ namespace Colorify
         public int chain = 1, bestChain = 1;
         public BoardKind kind = BoardKind.Plain;
 
-        public NormalRun(ColorifyConfig cfg, bool specials = false)
+        public NormalRun(ColorifyConfig cfg, bool specials = false, float paceScale = 1f)
         {
             this.cfg = cfg;
             this.specials = specials;
-            pace = specials ? Mathf.Clamp(Tuning.Current.pace, 0.5f, 4f) : 1f;
+            pace = (specials ? Mathf.Clamp(Tuning.Current.pace, 0.5f, 4f) : 1f) * Mathf.Clamp(paceScale, 0.2f, 2f);
         }
 
         // Variante del tablero: normal, muestra con franjas blancas o muestra que solo se ve unos segundos

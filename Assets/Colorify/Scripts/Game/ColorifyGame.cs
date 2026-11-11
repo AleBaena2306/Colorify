@@ -49,6 +49,7 @@ namespace Colorify
         private RunDirector director;              // solo modo Normal en solitario
         private RunDirector.Board dirBoard;        // lo que ha decidido el director para el tablero actual
         private bool overNearRecord;               // la última partida acabó cerca del récord (o lo batió)
+        private bool firstRun;                     // primera partida de Normal de este jugador
 
         private enum Mode { Normal, Survival, Online, Race }
 
@@ -218,7 +219,7 @@ namespace Colorify
             v.overInfo = UIKit.Text("Info", v.gameOver.transform, "", 44, UIKit.InkSoft);
             UIKit.Place(v.overInfo.rectTransform, 0.5f, 0.5f, new Vector2(1000, 70), new Vector2(0, 280));
             overUnlock = UIKit.Text("Unlock", v.gameOver.transform, "", 38, UIKit.Ink, black: true);
-            UIKit.Place(overUnlock.rectTransform, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
+            UIKit.Place(overUnlock.rectTransform, 0.5f, 0.5f, new Vector2(1000, 110), new Vector2(0, 180));
             v.overCardsRow = UIKit.Rect("Cards", v.gameOver.transform);
             UIKit.Place(v.overCardsRow, 0.5f, 0.5f, new Vector2(1000, 80), new Vector2(0, 180));
             v.overContinue = UIKit.Button("Continue", v.gameOver.transform, ContinueLabel, ColorifyView.TitleColors[2], new Vector2(820, 150), ContinueWithAd, 50);
@@ -310,6 +311,7 @@ namespace Colorify
             var bests = new List<string>();
             if (save.bestNormalPoints > 0) bests.Add($"{UIKit.Thousands(save.bestNormalPoints)} PTS");
             v.menuBest.text = bests.Count > 0 ? "BEST  ·  " + string.Join("   ·   ", bests) : "";
+            RefreshMenuCollection();
             v.multChip.gameObject.SetActive(true);
             v.roundLabel.text = "";
             v.scoreText.text = "";
@@ -378,7 +380,9 @@ namespace Colorify
             foreach (var cg in new[] { v.menu, v.gameOver, v.history }) Hide(cg);
             mode = m;
             run = m == Mode.Survival ? new RunState(cfg) : null;
-            normal = m == Mode.Normal ? new NormalRun(cfg, specials: true) : null;
+            // La primera partida de un jugador nuevo dura aproximadamente la mitad (firstRunPace): engancha antes
+            firstRun = m == Mode.Normal && save.normalRunsPlayed == 0;
+            normal = m == Mode.Normal ? new NormalRun(cfg, specials: true, paceScale: firstRun ? cfg.firstRunPace : 1f) : null;
             director = m == Mode.Normal
                 ? new RunDirector(save.bestNormalPoints, save.normalRunsPlayed, RunDirector.Median(save.recentRunSeconds), rng)
                 : null;
@@ -903,12 +907,14 @@ namespace Colorify
 
 #if UNITY_EDITOR
             // Trampa del Editor: +50.000 puntos acumulados para probar los desbloqueos de COLLECTION
-            if (state == State.Menu && KeyPressed("u")) { save.lifetimePoints += 50000; save.Save(); Debug.Log("[Colorify] Puntos acumulados: " + save.lifetimePoints); }
+            if (state == State.Menu && KeyPressed("u")) { save.lifetimePoints += 50000; save.Save(); RefreshMenuCollection(); Debug.Log("[Colorify] Puntos acumulados: " + save.lifetimePoints); }
 #endif
             if (mode == Mode.Race) UpdateRace();
             else if (state == State.Playing)
             {
-                timeLeft -= Mathf.Min(Time.deltaTime, 0.1f);
+                // El director puede hacer que el tiempo real corra algo más deprisa (la barra sigue al tiempo real)
+                float drain = director != null && normal != null ? director.DrainScale(dirBoard.mood) : 1f;
+                timeLeft -= Mathf.Min(Time.deltaTime, 0.1f) * drain;
                 if (normal != null) UpdateBoardFx(Mathf.Min(Time.deltaTime, 0.1f));
 #if UNITY_EDITOR
                 if (run != null && KeyPressed("n")) { run.roundScore = run.Target; StartCoroutine(RoundCleared()); return; }   // trampa: superar ronda
@@ -1408,7 +1414,7 @@ namespace Colorify
 #if ENABLE_INPUT_SYSTEM
             var k = Keyboard.current;
             if (k == null) return false;
-            return key == "n" ? k.nKey.wasPressedThisFrame : key == "k" && k.kKey.wasPressedThisFrame;
+            return key == "n" ? k.nKey.wasPressedThisFrame : key == "k" ? k.kKey.wasPressedThisFrame : key == "u" && k.uKey.wasPressedThisFrame;
 #else
             return Input.GetKeyDown(key);
 #endif

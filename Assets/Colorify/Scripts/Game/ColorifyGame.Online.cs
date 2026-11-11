@@ -345,10 +345,14 @@ namespace Colorify
             float until = Time.realtimeSinceStartup + 10f;
             while (!KovusPride.Publishing.StorePlatform.Ready && Time.realtimeSinceStartup < until) yield return null;
             yield return null;
-            if (!KovusPride.Publishing.StorePlatform.HasRoomPresence || !KovusPride.Publishing.StorePlatform.AllowsOwnMultiplayer) yield break;
-            string invite = KovusPride.Publishing.StorePlatform.InviteParamsJson;
-            if (!string.IsNullOrEmpty(invite)) JoinFromInvite(invite);
-            else if (KovusPride.Publishing.StorePlatform.IsInstantMultiplayer) StartInstantParty();
+            if (KovusPride.Publishing.StorePlatform.HasRoomPresence && KovusPride.Publishing.StorePlatform.AllowsOwnMultiplayer)
+            {
+                string invite = KovusPride.Publishing.StorePlatform.InviteParamsJson;
+                if (!string.IsNullOrEmpty(invite)) { JoinFromInvite(invite); yield break; }
+                if (KovusPride.Publishing.StorePlatform.IsInstantMultiplayer) { StartInstantParty(); yield break; }
+            }
+            // Jugador nuevo: directo a jugar, sin pasar por el menú (la mitad de la gente se iba antes de 30 s)
+            if (save.normalRunsPlayed == 0 && state == State.Menu) StartRun(Mode.Normal);
         }
 
         private void OnPlatformEvent(string name, string json)

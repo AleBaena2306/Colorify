@@ -55,22 +55,22 @@ namespace Colorify
         // Escalera de desbloqueos, colores y temas intercalados (puntos acumulados en Normal)
         public static readonly Item[] Ladder =
         {
-            ColorItem(5000, Rare("lavender", "Lavender", 300f, 0.72f, 0.10f)),
-            ThemeItem(12000, "sage"),
-            ColorItem(20000, Rare("rose", "Rose", 355f, 0.74f, 0.10f)),
-            ColorItem(30000, Rare("mint", "Mint", 170f, 0.85f, 0.08f)),
-            ThemeItem(45000, "blush"),
-            ColorItem(60000, Rare("sky", "Sky", 230f, 0.80f, 0.08f)),
-            ColorItem(80000, Rare("sand", "Sand", 80f, 0.82f, 0.06f)),
-            ThemeItem(100000, "mist"),
-            ColorItem(125000, Rare("lime", "Lime", 122f, 0.84f, 0.12f)),
-            ColorItem(150000, Rare("terracotta", "Terracotta", 40f, 0.60f, 0.10f)),
-            ThemeItem(180000, "lavender"),
-            ColorItem(215000, Rare("plum", "Plum", 325f, 0.60f, 0.11f)),
-            ColorItem(255000, Rare("indigo", "Indigo", 275f, 0.58f, 0.11f)),
-            ThemeItem(300000, "sand"),
-            ColorItem(350000, Rare("slate", "Slate", 250f, 0.62f, 0.04f)),
-            ThemeItem(420000, "clay"),
+            ThemeItem(600, "sage"),   // el primero llega en la primera partida (corta): engancha en los primeros minutos
+            ColorItem(3000, Rare("lavender", "Lavender", 300f, 0.72f, 0.10f)),
+            ColorItem(7000, Rare("rose", "Rose", 355f, 0.74f, 0.10f)),
+            ThemeItem(12000, "blush"),
+            ColorItem(20000, Rare("mint", "Mint", 170f, 0.85f, 0.08f)),
+            ColorItem(30000, Rare("sky", "Sky", 230f, 0.80f, 0.08f)),
+            ThemeItem(45000, "mist"),
+            ColorItem(60000, Rare("sand", "Sand", 80f, 0.82f, 0.06f)),
+            ColorItem(80000, Rare("lime", "Lime", 122f, 0.84f, 0.12f)),
+            ThemeItem(100000, "lavender"),
+            ColorItem(125000, Rare("terracotta", "Terracotta", 40f, 0.60f, 0.10f)),
+            ColorItem(150000, Rare("plum", "Plum", 325f, 0.60f, 0.11f)),
+            ThemeItem(180000, "sand"),
+            ColorItem(215000, Rare("indigo", "Indigo", 275f, 0.58f, 0.11f)),
+            ColorItem(255000, Rare("slate", "Slate", 250f, 0.62f, 0.04f)),
+            ThemeItem(300000, "clay"),
         };
 
         private static Item ColorItem(long cost, ColorifyConfig.ColorFamily f) =>
