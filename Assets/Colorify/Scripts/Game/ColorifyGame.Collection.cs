@@ -417,14 +417,14 @@ namespace Colorify
             }
 
             // Emblemas por puntos (5 por fila)
-            Header("EMBLEMS", -270f);
+            Header("EMBLEMS", -255f);
             for (int i = 0; i < Emblems.All.Length; i++)
             {
                 var e = Emblems.All[i];
                 bool unlocked = Collection.EmblemUnlocked(e.id, life, save.awards);
                 long cost = Collection.CostOf(Collection.Kind.Emblem, e.id);
                 var item = FindItem(Collection.Kind.Emblem, e.id);
-                EmblemCell(e, unlocked, unlocked ? e.name.ToUpperInvariant() : UIKit.Thousands(cost) + " PTS", i % 5, -350f - (i / 5) * 160f,
+                EmblemCell(e, unlocked, unlocked ? e.name.ToUpperInvariant() : UIKit.Thousands(cost) + " PTS", i % 5, -360f - (i / 5) * 160f,
                     item != null && IsNew(item, life), () => PickEmblem(e, unlocked, $"{e.name.ToUpperInvariant()} EMBLEM · unlocks at {UIKit.Thousands(cost)} pts"));
             }
 
@@ -433,7 +433,7 @@ namespace Colorify
             var now = System.DateTime.UtcNow;
             var end = new System.DateTime(now.Year, now.Month, 1, 0, 0, 0, System.DateTimeKind.Utc).AddMonths(1);
             int days = Mathf.Max(0, Mathf.CeilToInt((float)(end - now).TotalDays));
-            Header($"SEASON {Emblems.Roman(season)}  ·  TOP 3 OF THE MONTH  ·  {days} DAY{(days == 1 ? "" : "S")} LEFT", -680f);
+            Header($"SEASON {Emblems.Roman(season)}  ·  TOP 3 OF THE MONTH  ·  {days} DAY{(days == 1 ? "" : "S")} LEFT", -655f);
             var medals = new List<Emblems.Emblem>();
             for (int p = 1; p <= 3; p++) medals.Add(Emblems.SeasonEmblem(season, p));
             foreach (var a in save.awards)
