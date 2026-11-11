@@ -38,7 +38,8 @@ namespace Colorify
         public string emblem = "dot", nameColor = "ink";         // aspecto en el ranking (Emblems)
         public List<string> awards = new List<string>();         // emblemas de temporada ganados (los da el servidor)
         public List<string> seenAwards = new List<string>();     // los ya vistos (aviso NEW)
-        public string localName = "";                            // nombre registrado sin servidor propio (Playgama)
+        public string localName = "";                            // (sin uso desde el 11/11) nombre registrado en Playgama
+        public string platformName = "";                         // nombre del jugador en el ranking de la plataforma (Playgama)
         public bool soundOn = true;
         public bool vibrationOn = true;
         public List<RunRecord> topRuns = new List<RunRecord>();

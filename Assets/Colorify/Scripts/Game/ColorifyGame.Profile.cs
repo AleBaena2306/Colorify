@@ -72,7 +72,7 @@ namespace Colorify
             get
             {
                 if (StorePlatform.AllowsExternalLogin) return !SignedIn;                          // portfolio: Google
-                if (LocalProfile) return string.IsNullOrEmpty(save.localName);                    // Playgama
+                if (LocalProfile) return false;   // Playgama: el nombre es el de su ranking, no se registra otro
                 if (StorePlatform.Current == Store.CrazyGames)                                    // cuenta de CrazyGames
                     return StorePlatform.AccountAvailable && string.IsNullOrEmpty(StorePlatform.PlayerName);
                 return false;                                                                     // GameDistribution, itch.io

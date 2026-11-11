@@ -407,12 +407,12 @@ namespace Colorify
             var best = UIKit.Text("Best", preview.transform, save.bestNormalPoints > 0 ? UIKit.Thousands(save.bestNormalPoints) + " <size=70%>pts</size>" : "", 38, UIKit.Ink, black: true);
             best.alignment = TextAlignmentOptions.Right;
             UIKit.Place(best.rectTransform, 1f, 0.5f, new Vector2(300, 70), new Vector2(-180, 0));
-            var hint = UIKit.Text("Hint", collectionList, LocalProfile ? "Your look is saved on this device." : "This is how everyone sees you on the leaderboard.", 28, UIKit.InkSoft);
+            var hint = UIKit.Text("Hint", collectionList, LocalProfile ? "Your name is your Playgama name. Your look is saved on this device." : "This is how everyone sees you on the leaderboard.", 28, UIKit.InkSoft);
+            hint.enableAutoSizing = true; hint.fontSizeMin = 18f; hint.fontSizeMax = 28f;
             UIKit.Place(hint.rectTransform, 0.5f, 1f, new Vector2(980, 40), new Vector2(0, -132));
             if (CanRename)
             {
-                var rn = UIKit.Button("Rename", collectionList, LocalProfile && string.IsNullOrEmpty(save.localName) ? "REGISTER YOUR NAME" : "CHANGE NAME",
-                    LocalProfile && string.IsNullOrEmpty(save.localName) ? ColorifyView.TitleColors[2] : UIKit.PaperDark, new Vector2(460, 74), ShowNameEditor, 32);
+                var rn = UIKit.Button("Rename", collectionList, "CHANGE NAME", UIKit.PaperDark, new Vector2(460, 74), ShowNameEditor, 32);
                 UIKit.Place((RectTransform)rn.transform, 0.5f, 1f, new Vector2(460, 74), new Vector2(0, -196));
             }
 
@@ -559,9 +559,31 @@ namespace Colorify
             if (!Collection.NameColorUnlocked(save.nameColor, save.lifetimePoints)) save.nameColor = Emblems.DefaultNameColor;
         }
 
-        // Al arrancar: emblemas ganados y aspecto guardado en el servidor
+        // Nombre del jugador en el ranking de la plataforma (Playgama): el juego lo usa como su nombre
+        private void RememberPlatformName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name == save.platformName) return;
+            save.platformName = name.Length > 24 ? name.Substring(0, 24) : name;
+            save.Save();
+            if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
+        }
+
+        // Al arrancar: emblemas ganados y aspecto guardado en el servidor. En Playgama, el nombre de su ranking.
         private System.Collections.IEnumerator SyncProfile()
         {
+            if (LocalProfile && KovusPride.Publishing.StorePlatform.HasInGameLeaderboard)
+            {
+                float t = 0f;
+                while (!KovusPride.Publishing.StorePlatform.Ready && t < 10f) { t += Time.unscaledDeltaTime; yield return null; }
+                KovusPride.Publishing.StorePlatform.Call("lb.entries", "{\"board\":\"best\"}", (ok, json) =>
+                {
+                    if (!ok) return;
+                    PlatformLb lb = null;
+                    try { lb = JsonUtility.FromJson<PlatformLb>(json); } catch (System.Exception) { }
+                    if (lb == null || string.IsNullOrEmpty(lb.me)) return;
+                    foreach (var e in lb.entries) if (e.id == lb.me) RememberPlatformName(e.name);
+                });
+            }
             if (!OnlineEnabled) yield break;
             EnsureIdentity();
             ProfileResponse got = null;

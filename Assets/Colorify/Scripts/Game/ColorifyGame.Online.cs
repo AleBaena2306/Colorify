@@ -695,6 +695,7 @@ namespace Colorify
                     foreach (var e in lb.entries)
                     {
                         bool me = !string.IsNullOrEmpty(lb.me) && e.id == lb.me;
+                        if (me) RememberPlatformName(e.name);
                         r.top.Add(new ScoreRow { rank = e.rank, name = string.IsNullOrEmpty(e.name) ? "Player" : e.name, score = e.score, me = me });
                         if (me) r.me = new MyRank { rank = e.rank, best = e.score };
                     }

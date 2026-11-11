@@ -29,10 +29,13 @@ namespace Colorify
 
         private string sessionName;   // nombre escrito sin cuenta (solo esta sesión)
         private bool SignedIn => !string.IsNullOrEmpty(save.accountToken);
-        // Sin servidor propio (Playgama) el jugador registra su nombre en el propio juego y se guarda (save.localName)
+        // Sin servidor propio (Playgama): el ranking es el de la plataforma y muestra el nombre del jugador en Playgama,
+        // que el juego no puede cambiar. Para que coincida en todas partes, el nombre del juego es ese (lo da su SDK o,
+        // si no, su propia fila del ranking: save.platformName). Allí no se registra un nombre propio (11/11/2026: el
+        // nombre registrado no salía en el ranking y confundía).
         private static bool LocalProfile => !KovusPride.Publishing.StorePlatform.AllowsOwnServer;
-        private bool CanRename => KovusPride.Publishing.StorePlatform.AllowsExternalLogin || LocalProfile;
-        private string CurrentName => LocalProfile && !string.IsNullOrEmpty(save.localName) ? save.localName
+        private bool CanRename => KovusPride.Publishing.StorePlatform.AllowsExternalLogin;
+        private string CurrentName => LocalProfile ? (PlatformName ?? (!string.IsNullOrEmpty(save.platformName) ? save.platformName : save.playerName))
             : SignedIn && !string.IsNullOrEmpty(save.accountName) ? save.accountName
             : !string.IsNullOrEmpty(sessionName) ? sessionName : PlatformName ?? save.playerName;
 
