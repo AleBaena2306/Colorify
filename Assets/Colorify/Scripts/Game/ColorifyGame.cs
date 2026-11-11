@@ -901,6 +901,10 @@ namespace Colorify
                 else if (state != State.Playing && state != State.Countdown && state != State.Resolving) GoBack();
             }
 
+#if UNITY_EDITOR
+            // Trampa del Editor: +50.000 puntos acumulados para probar los desbloqueos de COLLECTION
+            if (state == State.Menu && KeyPressed("u")) { save.lifetimePoints += 50000; save.Save(); Debug.Log("[Colorify] Puntos acumulados: " + save.lifetimePoints); }
+#endif
             if (mode == Mode.Race) UpdateRace();
             else if (state == State.Playing)
             {
