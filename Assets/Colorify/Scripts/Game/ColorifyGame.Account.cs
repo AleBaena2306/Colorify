@@ -163,6 +163,7 @@ namespace Colorify
 
         private void ShowNameEditor()
         {
+            if (!CanRename) { ProfileAction(); return; }   // portales: el nombre es el de su cuenta
             sfx.Play(Sfx.Id.Click);
             EnsureIdentity();
             deleteArmed = false;

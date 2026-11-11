@@ -8,7 +8,8 @@ namespace Colorify
     // Perfil en el menú (arriba a la izquierda): emblema y nombre del jugador, siempre a la vista desde la primera
     // partida. Al pulsarlo, cada plataforma usa la herramienta que permite para el nombre:
     //   · Portfolio: pantalla YOUR NAME con «Sign in with Google» (nombre reservado en el servidor propio).
-    //   · Playgama: la misma pantalla sin Google (no hay servidor propio): el nombre se guarda en el dispositivo.
+    //   · Playgama: su ranking muestra el nombre de Playgama, así que el juego usa ese nombre; se cambia iniciando sesión
+    //     en Playgama (bridge.player.authorize, llamada user.auth de kp-platform.js). Con cuenta, COLLECTION > PROFILE.
     //   · CrazyGames: prohíbe inicios de sesión externos; se usa su propio aviso de inicio de sesión (SDK
     //     user.showAuthPrompt) y el nombre pasa a ser el de la cuenta de CrazyGames. Con la sesión ya iniciada, el
     //     nombre no se cambia en el juego: se abre COLLECTION > PROFILE (emblema y color del nombre).
@@ -72,30 +73,36 @@ namespace Colorify
             get
             {
                 if (StorePlatform.AllowsExternalLogin) return !SignedIn;                          // portfolio: Google
-                if (LocalProfile) return false;   // Playgama: el nombre es el de su ranking, no se registra otro
-                if (StorePlatform.Current == Store.CrazyGames)                                    // cuenta de CrazyGames
-                    return StorePlatform.AccountAvailable && string.IsNullOrEmpty(StorePlatform.PlayerName);
-                return false;                                                                     // GameDistribution, itch.io
+                return CanPlatformLogIn;                                                          // CrazyGames y Playgama
+
             }
         }
+
+        // Cuentas de la plataforma (CrazyGames, Playgama): se puede iniciar sesión y aún es invitado
+        private static bool CanPlatformLogIn => (StorePlatform.Current == Store.CrazyGames || StorePlatform.Current == Store.Playgama) &&
+                                                StorePlatform.AccountAvailable && StorePlatform.IsGuest;
 
         private void ProfileAction()
         {
             if (StorePlatform.AdShowing) return;
             CompleteCoach(CoachKind.Profile);
             if (CanRename) { ShowNameEditor(); return; }
-            if (StorePlatform.Current == Store.CrazyGames && StorePlatform.AccountAvailable && string.IsNullOrEmpty(StorePlatform.PlayerName))
+            if (CanPlatformLogIn)
             {
                 sfx.Play(Sfx.Id.Click);
-                Analytics.Log("account_prompt", ("store", "crazygames"));
+                string store = StorePlatform.Current.ToString().ToLowerInvariant();
+                Analytics.Log("account_prompt", ("store", store));
                 StorePlatform.ShowAuthPrompt(ok =>
                 {
-                    Analytics.Log("account_prompt_result", ("store", "crazygames"), ("ok", ok));
+                    Analytics.Log("account_prompt_result", ("store", store), ("ok", ok));
                     if (!ok) return;
                     platformNameRejected = false;
+                    save.platformName = "";   // el ranking de Playgama ya lo enseñará con el nombre de la cuenta
+                    save.Save();
                     CloseDuel();   // la próxima conexión se presenta con el nombre de la cuenta
                     if (onlineName != null) onlineName.text = CurrentName;
                     RefreshMenuProfile();
+                    if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
                     juice.Punch(menuProfile.transform, 0.12f, 0.3f);
                 });
                 return;

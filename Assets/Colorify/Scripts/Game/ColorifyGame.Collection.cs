@@ -410,9 +410,11 @@ namespace Colorify
             var hint = UIKit.Text("Hint", collectionList, LocalProfile ? "Your name is your Playgama name. Your look is saved on this device." : "This is how everyone sees you on the leaderboard.", 28, UIKit.InkSoft);
             hint.enableAutoSizing = true; hint.fontSizeMin = 18f; hint.fontSizeMax = 28f;
             UIKit.Place(hint.rectTransform, 0.5f, 1f, new Vector2(980, 40), new Vector2(0, -132));
-            if (CanRename)
+            if (CanRename || CanPlatformLogIn)
             {
-                var rn = UIKit.Button("Rename", collectionList, "CHANGE NAME", UIKit.PaperDark, new Vector2(460, 74), ShowNameEditor, 32);
+                // Portfolio: cambiar el nombre (con Google para conservarlo). CrazyGames y Playgama: iniciar sesión en ellos
+                var rn = UIKit.Button("Rename", collectionList, CanRename ? "CHANGE NAME" : "LOG IN TO KEEP YOUR NAME",
+                    CanRename ? UIKit.PaperDark : ColorifyView.TitleColors[2], new Vector2(460, 74), ProfileAction, 32);
                 UIKit.Place((RectTransform)rn.transform, 0.5f, 1f, new Vector2(460, 74), new Vector2(0, -196));
             }
 
@@ -566,6 +568,7 @@ namespace Colorify
             save.platformName = name.Length > 24 ? name.Substring(0, 24) : name;
             save.Save();
             if (collection != null && collection.gameObject.activeSelf) RefreshCollection();
+            RefreshMenuProfile();
         }
 
         // Al arrancar: emblemas ganados y aspecto guardado en el servidor. En Playgama, el nombre de su ranking.

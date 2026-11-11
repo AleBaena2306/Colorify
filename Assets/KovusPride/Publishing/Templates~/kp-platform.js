@@ -13,7 +13,7 @@
 //                              Métodos (Playgama): lb.entries {board} · mp.quick {max, filter} · mp.create {max}
 //                              mp.join {room} · mp.findJoin {filter} · mp.close · mp.leave · mp.send {type, data, to}
 //                              (CrazyGames) room.update {roomId, isJoinable, inviteParams} · room.left · room.inviteLink {params}
-//                              · user.auth (su aviso de inicio de sesión; responde {user})
+//                              · user.auth (su aviso de inicio de sesión; responde {user}). También Playgama (player.authorize)
 //   Eventos de la plataforma: emit(7, {name, data}) — mp.joined, mp.left, mp.message, mp.roomLeft, mp.host, room.join
 // Si un SDK falla o no responde, el juego sigue: «listo» sin anuncios a los 8 s y anuncios que caducan a los 60 s.
 (function () {
@@ -81,7 +81,7 @@
     info = info || {};
     emit(1, { store: store, ads: info.ads ? 1 : 0, rewarded: info.rewarded ? 1 : 0, user: info.user || '',
               lang: info.lang || info0.lang || '', lb: info.lb || '', mp: info.mp ? 1 : 0, pid: info.pid || '',
-              instant: info.instant ? 1 : 0, invite: info.invite || '', acct: info.acct ? 1 : 0 });
+              instant: info.instant ? 1 : 0, invite: info.invite || '', acct: info.acct ? 1 : 0, guest: info.guest ? 1 : 0 });
   }
 
   function reply(id, ok, data) {
@@ -146,7 +146,7 @@
         try { if (g.addJoinRoomListener) g.addJoinRoomListener(function (params) { platformEvent('room.join', params || {}); }); } catch (e) { }
         var acct = false;
         try { acct = !!(sdk.user && sdk.user.isUserAccountAvailable); } catch (e) { }
-        var finish = function (user) { sendReady({ ads: ads, rewarded: ads, user: user && user.username, instant: instant, invite: invite, acct: acct }); };
+        var finish = function (user) { sendReady({ ads: ads, rewarded: ads, user: user && user.username, instant: instant, invite: invite, acct: acct, guest: !user }); };
         try {
           if (sdk.user && sdk.user.isUserAccountAvailable) sdk.user.getUser().then(finish).catch(function () { finish(null); });
           else finish(null);
@@ -254,8 +254,12 @@
       var lbType = ''; try { lbType = (b.leaderboards && b.leaderboards.type) || ''; } catch (e) { }
       var mpOk = false; try { mpOk = !!(window.KP_OPTIONS && window.KP_OPTIONS.multiplayer && b.multiplayer && b.multiplayer.isSupported); } catch (e) { }
       if (mpOk) pg.listenRooms(b);
+      // Cuenta de Playgama: el ranking de Playgama muestra su nombre (invitado o con cuenta), no uno del juego
+      var auth = false, guest = true;
+      try { auth = !!b.player.isAuthorizationSupported; } catch (e) { }
+      try { guest = b.player.isGuest !== undefined ? !!b.player.isGuest : !b.player.isAuthorized; } catch (e) { }
       sendReady({ ads: a.isInterstitialSupported, rewarded: a.isRewardedSupported, user: b.player && b.player.name,
-                  lb: lbType, mp: mpOk, pid: (b.player && b.player.id) || '' });
+                  lb: lbType, mp: mpOk, pid: (b.player && b.player.id) || '', acct: auth, guest: guest });
       // El estado se lee en vivo, no el de preload: si al arrancar había un anuncio (o el audio estaba apagado) y el
       // aviso de «ya está» llegó antes de registrar los listeners, el juego se quedaba en silencio para siempre.
       if (pg.adOpen(b)) { pg.pauseFromAd = true; setPause(true); }
@@ -324,6 +328,11 @@
       var fail = function (e) { reply(id, false, { error: (e && (e.code || e.message)) || String(e || 'error') }); };
       var m = b.multiplayer;
       switch (method) {
+        case 'user.auth':
+          // Inicio de sesión de Playgama (solo con un toque del jugador); responde el nombre de la cuenta
+          if (!b.player || !b.player.isAuthorizationSupported) { reply(id, false, { error: 'not_available' }); return; }
+          b.player.authorize({}).then(function () { reply(id, true, { user: b.player.name || '' }); }).catch(fail);
+          return;
         case 'lb.entries':
           if (!b.leaderboards || b.leaderboards.type !== 'in_game') { reply(id, false, { error: 'not_available' }); return; }
           b.leaderboards.getEntries(args.board).then(function (entries) {

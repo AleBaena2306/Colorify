@@ -122,6 +122,10 @@ namespace Colorify
                     title = "PLAY WITH YOUR CRAZYGAMES NAME";
                     sub = "Log in to keep your name and progress";
                     break;
+                case KovusPride.Publishing.Store.Playgama:
+                    title = "LOG IN TO PLAYGAMA";
+                    sub = "Keep your name and progress";
+                    break;
                 default:
                     title = "REGISTER YOUR NAME";
                     sub = "Choose how everyone sees you";

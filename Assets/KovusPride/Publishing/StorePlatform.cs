@@ -89,6 +89,8 @@ namespace KovusPride.Publishing
         public static string PlayerName { get; private set; } = "";
         // La plataforma tiene cuentas propias a las que se puede invitar a entrar desde el juego (CrazyGames)
         public static bool AccountAvailable { get; private set; }
+        // Sin cuenta en la plataforma (invitado): se le puede invitar a iniciar sesión (ShowAuthPrompt)
+        public static bool IsGuest { get; private set; }
         public static event Action<bool> PauseRequested;   // la plataforma pide pausar (true) o reanudar (false)
         public static event Action<bool> MuteRequested;    // la plataforma pide silenciar (true) o no (false)
         public static event Action OnReady;
@@ -121,7 +123,7 @@ namespace KovusPride.Publishing
         // 6 respuesta de una llamada (Call), 7 evento de la plataforma (PlatformEvent)
         [Serializable] private class JsEvent
         {
-            public string store; public int ads, rewarded, id, ok, on, mp, instant, acct; public string user, lang, lb, pid, data, name, invite;
+            public string store; public int ads, rewarded, id, ok, on, mp, instant, acct, guest; public string user, lang, lb, pid, data, name, invite;
         }
 
         private static void HandleEvent(int kind, string json)
@@ -135,6 +137,7 @@ namespace KovusPride.Publishing
                     RewardedAvailable = e.rewarded == 1;
                     PlayerName = string.IsNullOrEmpty(e.user) ? "" : e.user;
                     AccountAvailable = e.acct == 1;
+                    IsGuest = e.guest == 1;
                     Language = string.IsNullOrEmpty(e.lang) ? "" : e.lang;
                     LeaderboardType = string.IsNullOrEmpty(e.lb) ? "" : e.lb;
                     MultiplayerAvailable = e.mp == 1;
@@ -365,8 +368,9 @@ namespace KovusPride.Publishing
         // ---------------- Cuenta de la plataforma ----------------
         [Serializable] private class AuthReply { public string user; }
 
-        // CrazyGames: su propio aviso de inicio de sesión (los portales no permiten cuentas externas como Google).
-        // done(true) si el jugador ha iniciado sesión; desde entonces PlayerName es el nombre de su cuenta.
+        // Inicio de sesión de la propia plataforma (CrazyGames: showAuthPrompt; Playgama: player.authorize). Los portales
+        // no permiten cuentas externas como Google. done(true) si el jugador ha iniciado sesión; desde entonces
+        // PlayerName es el nombre de su cuenta (si la plataforma lo da).
         public static void ShowAuthPrompt(Action<bool> done)
         {
             Call("user.auth", "{}", (ok, json) =>
@@ -374,7 +378,8 @@ namespace KovusPride.Publishing
                 string user = "";
                 if (ok) { try { user = JsonUtility.FromJson<AuthReply>(json)?.user ?? ""; } catch (Exception) { } }
                 if (!string.IsNullOrEmpty(user)) PlayerName = user;
-                done?.Invoke(!string.IsNullOrEmpty(user));
+                if (ok) IsGuest = false;
+                done?.Invoke(ok);
             });
         }
 
