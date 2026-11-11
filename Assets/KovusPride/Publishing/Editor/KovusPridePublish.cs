@@ -155,6 +155,11 @@ public static class KovusPridePublish
             PlayerSettings.WebGL.nameFilesAsHashes = false;
             PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, Il2CppCodeGeneration.OptimizeSize);
             EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.DXT;
+            // Descarga más pequeña (11/11/2026: un 29 % de los jugadores de Playgama se iba durante la carga de 12,7 MB).
+            // Stripping alto del código de Unity y de los paquetes; el código del juego lo protege link.xml.
+            PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, ManagedStrippingLevel.High);
+            PlayerSettings.stripEngineCode = true;
+            SettingsSnapshot.SetWasmCodeOptimization("DiskSizeLTO", "DiskSize");
 
             if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
             Directory.CreateDirectory(outDir);
@@ -494,6 +499,42 @@ public static class KovusPridePublish
         private readonly bool hashes = PlayerSettings.WebGL.nameFilesAsHashes;
         private readonly WebGLTextureSubtarget textures = EditorUserBuildSettings.webGLBuildSubtarget;
         private readonly Il2CppCodeGeneration codegen = PlayerSettings.GetIl2CppCodeGeneration(NamedBuildTarget.WebGL);
+        private readonly ManagedStrippingLevel stripping = PlayerSettings.GetManagedStrippingLevel(NamedBuildTarget.WebGL);
+        private readonly bool stripEngine = PlayerSettings.stripEngineCode;
+        private readonly object codeOptimization = GetWasmCodeOptimization();
+
+        // Optimización del WebAssembly (Unity 6: Build Settings > Web > Code Optimization). Se toca por reflexión para
+        // no depender del nombre exacto del tipo en cada versión de Unity; si no existe, se deja como esté.
+        private static System.Reflection.PropertyInfo WasmCodeOptimizationProperty()
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type t = null;
+                try { t = asm.GetType("UnityEditor.WebGL.UserBuildSettings"); } catch { }
+                var prop = t?.GetProperty("codeOptimization", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (prop != null && prop.CanWrite && prop.PropertyType.IsEnum) return prop;
+            }
+            return null;
+        }
+
+        private static object GetWasmCodeOptimization()
+        {
+            try { return WasmCodeOptimizationProperty()?.GetValue(null); } catch { return null; }
+        }
+
+        public static void SetWasmCodeOptimization(params string[] preferred)
+        {
+            var prop = WasmCodeOptimizationProperty();
+            if (prop == null) { Debug.Log("[Publish] Code Optimization: no disponible en esta versión de Unity"); return; }
+            var names = Enum.GetNames(prop.PropertyType);
+            foreach (var name in preferred)
+            {
+                if (!names.Contains(name)) continue;
+                try { prop.SetValue(null, Enum.Parse(prop.PropertyType, name)); Debug.Log("[Publish] Code Optimization: " + name); return; }
+                catch (Exception e) { Debug.LogWarning("[Publish] Code Optimization: " + e.Message); }
+            }
+            Debug.Log("[Publish] Code Optimization: ninguna de " + string.Join(", ", preferred) + " existe (" + string.Join(", ", names) + ")");
+        }
 
         public void Restore()
         {
@@ -504,6 +545,9 @@ public static class KovusPridePublish
             PlayerSettings.WebGL.nameFilesAsHashes = hashes;
             EditorUserBuildSettings.webGLBuildSubtarget = textures;
             PlayerSettings.SetIl2CppCodeGeneration(NamedBuildTarget.WebGL, codegen);
+            PlayerSettings.SetManagedStrippingLevel(NamedBuildTarget.WebGL, stripping);
+            PlayerSettings.stripEngineCode = stripEngine;
+            try { if (codeOptimization != null) WasmCodeOptimizationProperty()?.SetValue(null, codeOptimization); } catch { }
         }
     }
 }
