@@ -32,3 +32,9 @@ Cada caso nuevo se convierte en una comprobación de KovusPridePublish para que 
   porque como HTML5 no se garantiza el Content-Encoding). Se deshace el cambio anterior de quitar el fallback.
 - Vista previa de CrazyGames: kp-platform.js devolvió 404 (el archivo suelto no llegó o no se sirvió) y el juego arrancó
   sin SDK («intersticiales False»). Ahora el adaptador va dentro del index.html.
+- Playgama, sandbox (11/11/2026, avisos de jugadores y telemetría): en la primera partida se iba el sonido, en torno al
+  primer anuncio. Causas posibles, todas cubiertas en kp-platform.js: el AudioContext de Unity queda «suspended» o
+  «interrupted» tras un anuncio o al cambiar de pestaña y Unity no lo reanuda (ahora se reanuda al acabar el anuncio, al
+  volver a la pestaña y con cada toque); el estado de audio se leía en preload y un «audio activado» anterior a los
+  listeners se perdía (ahora se lee en vivo cada 1,5 s); había más «interstitial opened» que «closed» (ahora un anuncio
+  cerrado sin aviso se da por terminado y se levanta su pausa).
