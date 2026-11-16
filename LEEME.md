@@ -136,7 +136,11 @@ adaptador en `Mobile/Adapters/<Publisher>Adapter.cs` (CrazyLabs, Homa, Voodoo, K
 MondayOff, Supercent, BoomBit, Rollic, Azur).
 
 - **Build**: COLORIFY > Build > Android publisher > <Publisher>. Compila el APK con el símbolo `KP_PUB_<PUBLISHER>`
-  solo para esa build y lo deja en `Builds/Android/Publishers/Colorify-<Publisher>-v<versión>-<fecha>.apk`.
+  solo para esa build y lo deja en `Builds/Android/Publishers/<Publisher>/Colorify-<Publisher>-v<versión>-<fecha>.apk`.
+- **Todas a la vez**: COLORIFY > Build > Android publisher > ★ Todas las builds de publishers. Compila una tras otra
+  las de todos los publishers, cada una en su carpeta; si una falla sigue con las demás y al final enseña un resumen.
+  No necesita internet si Gradle ya tiene en caché lo que usa (lo normal tras una build Android anterior); la primera
+  build después de importar el SDK real de un publisher sí lo necesita, porque descarga sus dependencias.
 - **Prueba sin SDK**: COLORIFY > Build > Android publisher > Prueba: anuncios simulados. Instala por USB una build con
   anuncios falsos de 1 s: sale el «continuar con anuncio», el intersticial al salir y los niveles en el logcat.
 - **Qué hace la capa**: los anuncios del juego (`StorePlatform.ShowRewarded` / `ShowInterstitial`) van al adaptador; cada
