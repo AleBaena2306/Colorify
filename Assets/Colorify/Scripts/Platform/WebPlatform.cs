@@ -14,7 +14,8 @@ namespace Colorify
     // Analítica: eventos estándar (game_start / game_end) y los propios del juego.
     // Web: puente KP_LogEvent → window.kpAnalytics(nombre, json), que define la página del portfolio
     //      (si no existe todavía, no se envía nada). Editor: se escriben en la consola.
-    // Android (si el juego va a Google Play): aquí se conectará el módulo Analytics del framework con Firebase.
+    // Android: cada evento se reenvía también al SDK del publisher móvil, si la build lleva uno
+    //          (KovusPride.Publishing.Mobile.PublisherSdk; game_start/game_end del modo Normal = nivel empezado/terminado).
     public static class Analytics
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -42,6 +43,12 @@ namespace Colorify
 #if UNITY_WEBGL && !UNITY_EDITOR
                 KP_LogEvent(name, json);
 #endif
+                if (KovusPride.Publishing.Mobile.PublisherSdk.Active)
+                {
+                    var forPublisher = new Dictionary<string, object>();
+                    foreach (var kv in parameters) forPublisher[kv.key] = kv.value;
+                    KovusPride.Publishing.Mobile.PublisherSdk.OnAnalyticsEvent(name, forPublisher);
+                }
                 if (LogToConsole && (Application.isEditor || Debug.isDebugBuild)) Debug.Log($"[Analytics] {name} {json}");
             }
             catch (Exception e) { Debug.LogWarning("[Analytics] " + e.Message); }
@@ -53,10 +60,11 @@ namespace Colorify
     public class Ads : MonoBehaviour
     {
         public static Ads Instance { get; private set; }
-        // En los portales manda la capa de publicación (el SDK de CrazyGames, Playgama o GameDistribution)
+        // En los portales manda la capa de publicación (el SDK de CrazyGames, Playgama o GameDistribution); en Android,
+        // el SDK del publisher móvil, si la build lleva uno
         public bool IsReady
         {
-            get => KovusPride.Publishing.StorePlatform.IsPortal ? KovusPride.Publishing.StorePlatform.RewardedAvailable : ownReady;
+            get => KovusPride.Publishing.StorePlatform.UsesPlatformAds ? KovusPride.Publishing.StorePlatform.RewardedAvailable : ownReady;
             private set => ownReady = value;
         }
         private bool ownReady;
@@ -86,7 +94,7 @@ namespace Colorify
 
         private void Start()
         {
-            if (KovusPride.Publishing.StorePlatform.IsPortal) return;   // sin AdSense fuera del portfolio
+            if (KovusPride.Publishing.StorePlatform.UsesPlatformAds) return;   // sin AdSense fuera del portfolio
 #if UNITY_WEBGL && !UNITY_EDITOR
             // El ID de editor lo pone la página (window.KP_ADSENSE_CLIENT, definido en build.js del portfolio):
             // no se repite aquí para que viva en un solo sitio
@@ -102,7 +110,7 @@ namespace Colorify
         public void ShowRewarded(string placement, Action<bool> done)
         {
             if (!IsReady || IsShowing) { done?.Invoke(false); return; }
-            if (KovusPride.Publishing.StorePlatform.IsPortal)
+            if (KovusPride.Publishing.StorePlatform.UsesPlatformAds)
             {
                 IsShowing = true;
                 Analytics.Log("ad_rewarded_show", ("placement", placement));

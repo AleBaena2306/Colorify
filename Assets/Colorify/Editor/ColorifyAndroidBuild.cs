@@ -14,15 +14,41 @@ namespace Colorify.EditorTools
     // El mismo APK, guardado aparte con la versión y la fecha en el nombre (Builds/Android/Publishers), listo para
     // subirlo a Drive y mandar el enlace. Firmado con la clave de depuración de Unity: se instala en cualquier Android
     // con «Instalar apps desconocidas»; para Google Play haría falta un keystore propio.
+    // COLORIFY > Build > Android publisher > <Publisher>
+    // APK con el SDK de ese publisher (símbolo KP_PUB_<PUBLISHER>, solo para esa build; no cambia los ajustes del
+    // proyecto). El código de cada SDK está en Assets/KovusPride/Publishing/Mobile/Adapters. «Prueba: anuncios
+    // simulados» instala por USB una build con anuncios falsos de 1 s para comprobar el flujo antes de tener ningún SDK.
     // Requisitos: módulo Android Build Support instalado en Unity y el móvil con la depuración USB activada.
     public static class ColorifyAndroidBuild
     {
         private static string OutputPath =>
             Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Builds", "Android", "Colorify.apk"));
 
-        private static string PublishersPath =>
+        private static string PublishersPath(string publisher) =>
             Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Builds", "Android", "Publishers",
-                $"Colorify-v{PlayerSettings.bundleVersion}-{System.DateTime.Now:yyyy-MM-dd}.apk"));
+                $"Colorify{(publisher != null ? "-" + publisher : "")}-v{PlayerSettings.bundleVersion}-{System.DateTime.Now:yyyy-MM-dd}.apk"));
+
+        // ---------------- Builds con el SDK de un publisher ----------------
+        private const string Pub = "COLORIFY/Build/Android publisher/";
+
+        [MenuItem(Pub + "Prueba: anuncios simulados (instalar por USB)", priority = 50)]
+        public static void BuildPublisherTest() => Build(run: true, define: "KP_PUB_TEST");
+
+        [MenuItem(Pub + "CrazyLabs", priority = 61)] public static void BuildCrazyLabs() => BuildPublisher("CrazyLabs", "KP_PUB_CRAZYLABS");
+        [MenuItem(Pub + "Homa", priority = 62)] public static void BuildHoma() => BuildPublisher("Homa", "KP_PUB_HOMA");
+        [MenuItem(Pub + "Voodoo", priority = 63)] public static void BuildVoodoo() => BuildPublisher("Voodoo", "KP_PUB_VOODOO");
+        [MenuItem(Pub + "Kwalee", priority = 64)] public static void BuildKwalee() => BuildPublisher("Kwalee", "KP_PUB_KWALEE");
+        [MenuItem(Pub + "SayGames", priority = 65)] public static void BuildSayGames() => BuildPublisher("SayGames", "KP_PUB_SAYGAMES");
+        [MenuItem(Pub + "Supersonic", priority = 66)] public static void BuildSupersonic() => BuildPublisher("Supersonic", "KP_PUB_SUPERSONIC");
+        [MenuItem(Pub + "Tapnation", priority = 67)] public static void BuildTapnation() => BuildPublisher("Tapnation", "KP_PUB_TAPNATION");
+        [MenuItem(Pub + "MondayOFF", priority = 68)] public static void BuildMondayOff() => BuildPublisher("MondayOFF", "KP_PUB_MONDAYOFF");
+        [MenuItem(Pub + "Supercent", priority = 69)] public static void BuildSupercent() => BuildPublisher("Supercent", "KP_PUB_SUPERCENT");
+        [MenuItem(Pub + "BoomBit", priority = 70)] public static void BuildBoomBit() => BuildPublisher("BoomBit", "KP_PUB_BOOMBIT");
+        [MenuItem(Pub + "Rollic", priority = 71)] public static void BuildRollic() => BuildPublisher("Rollic", "KP_PUB_ROLLIC");
+        [MenuItem(Pub + "Azur Games", priority = 72)] public static void BuildAzur() => BuildPublisher("Azur", "KP_PUB_AZUR");
+
+        private static void BuildPublisher(string name, string define) =>
+            Build(run: false, forPublishers: true, define: define, publisher: name);
 
         [MenuItem("COLORIFY/Build/Android: APK para publishers", priority = 39)]
         public static void BuildForPublishers() => Build(run: false, forPublishers: true);
@@ -33,9 +59,9 @@ namespace Colorify.EditorTools
         [MenuItem("COLORIFY/Build/Android: solo crear el APK", priority = 41)]
         public static void BuildApkOnly() => Build(run: false);
 
-        private static void Build(bool run, bool forPublishers = false)
+        private static void Build(bool run, bool forPublishers = false, string define = null, string publisher = null)
         {
-            string outputPath = forPublishers ? PublishersPath : OutputPath;
+            string outputPath = forPublishers ? PublishersPath(publisher) : OutputPath;
             if (!BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android))
             {
                 EditorUtility.DisplayDialog("COLORIFY · Android",
@@ -77,6 +103,7 @@ namespace Colorify.EditorTools
                 locationPathName = outputPath,
                 target = BuildTarget.Android,
                 options = run ? BuildOptions.AutoRunPlayer : BuildOptions.None,
+                extraScriptingDefines = define != null ? new[] { define } : new string[0],
             };
             if (options.scenes.Length == 0)
             {
@@ -84,7 +111,8 @@ namespace Colorify.EditorTools
                 return;
             }
 
-            Debug.Log($"[AndroidBuild] Compilando {PlayerSettings.productName} {PlayerSettings.bundleVersion} en {outputPath}…");
+            Debug.Log($"[AndroidBuild] Compilando {PlayerSettings.productName} {PlayerSettings.bundleVersion}" +
+                      (define != null ? $" con {define}" : "") + $" en {outputPath}…");
             BuildReport report = BuildPipeline.BuildPlayer(options);
             var summary = report.summary;
 

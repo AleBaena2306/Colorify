@@ -71,8 +71,13 @@ namespace KovusPride.Publishing
         // Tecla Esc: en los portales el navegador la reserva para salir de pantalla completa (Playgama 1.5.2)
         public static bool AllowsEscapeKey => !IsPortal;
 
-        // El SDK de la plataforma regula los intersticiales (frecuencia y primer anuncio)
-        public static bool PlatformPacesAds => Current == Store.Playgama;
+        // El SDK de la plataforma regula los intersticiales (frecuencia y primer anuncio). Los SDK de los publishers
+        // móviles también (su configuración remota decide la frecuencia).
+        public static bool PlatformPacesAds => Current == Store.Playgama || Mobile.PublisherSdk.Active;
+
+        // Los anuncios los pone la plataforma (portal web) o el SDK de un publisher móvil (build de Android con
+        // KP_PUB_<PUBLISHER>), y no AdSense del portfolio
+        public static bool UsesPlatformAds => IsPortal || Mobile.PublisherSdk.Active;
 
         // Idioma que da la plataforma (ISO 639-1, p. ej. «es»); vacío si no lo da
         public static string Language { get; private set; } = "";
@@ -144,7 +149,7 @@ namespace KovusPride.Publishing
                     PlayerId = string.IsNullOrEmpty(e.pid) ? "" : e.pid;
                     IsInstantMultiplayer = e.instant == 1;
                     InviteParamsJson = string.IsNullOrEmpty(e.invite) ? "" : e.invite;
-                    Debug.Log($"[Platform] {Current} listo · intersticiales {InterstitialAvailable} · bonificados {RewardedAvailable}" +
+                    Debug.Log($"[Platform] {(Mobile.PublisherSdk.Active ? Mobile.PublisherSdk.Current.ToString() : Current.ToString())} listo · intersticiales {InterstitialAvailable} · bonificados {RewardedAvailable}" +
                               (PlayerName != "" ? $" · jugador {PlayerName}" : ""));
                     OnReady?.Invoke();
                     break;
@@ -187,6 +192,13 @@ namespace KovusPride.Publishing
                 return;
             }
 #endif
+            // Android con el SDK de un publisher (y el Editor con su símbolo): los anuncios los da el adaptador
+            if (Mobile.PublisherSdk.Active)
+            {
+                Mobile.PublisherSdk.Init((ads, rewarded) =>
+                    HandleEvent(1, "{\"ads\":" + (ads ? 1 : 0) + ",\"rewarded\":" + (rewarded ? 1 : 0) + "}"));
+                return;
+            }
             // Portfolio y Editor: sin SDK de portal. En el Editor, con un símbolo de portal activo, se simulan
             // los anuncios para poder probar el flujo.
             bool simulate = Application.isEditor && IsPortal;
@@ -262,6 +274,12 @@ namespace KovusPride.Publishing
             try { KPP_ShowAd(pendingId, type, placement ?? ""); }
             catch (Exception e) { Debug.LogWarning("[Platform] " + e.Message); FinishAd(false); }
 #else
+            if (Mobile.PublisherSdk.Active && !Application.isEditor)
+            {
+                int id = pendingId;
+                Mobile.PublisherSdk.ShowAd(pendingRewarded, placement, ok => { if (id == pendingId) FinishAd(ok); });
+                return;
+            }
             Runner.Get().StartCoroutine(FakeAd(type, placement, pendingId));
 #endif
         }

@@ -128,3 +128,21 @@ Assets/Plugins/WebGL              KovusPrideWeb/Analytics.jslib (de MASSBOUND) +
 listo en `Builds/Publish/<plataforma>/` tras comprobar los requisitos de la plataforma. El juego habla con todas
 mediante `KovusPride.Publishing.StorePlatform`. En los portales usa el servidor del portfolio, no tiene inicio de
 sesión con Google y usa los anuncios del portal. Todo está explicado en `Publishing/README.md`.
+
+## SDK de publishers móviles (Android)
+
+Todo el juego habla con una sola capa (`Assets/KovusPride/Publishing/Mobile/PublisherSdk.cs`); cada publisher tiene su
+adaptador en `Mobile/Adapters/<Publisher>Adapter.cs` (CrazyLabs, Homa, Voodoo, Kwalee, SayGames, Supersonic, Tapnation,
+MondayOff, Supercent, BoomBit, Rollic, Azur).
+
+- **Build**: COLORIFY > Build > Android publisher > <Publisher>. Compila el APK con el símbolo `KP_PUB_<PUBLISHER>`
+  solo para esa build y lo deja en `Builds/Android/Publishers/Colorify-<Publisher>-v<versión>-<fecha>.apk`.
+- **Prueba sin SDK**: COLORIFY > Build > Android publisher > Prueba: anuncios simulados. Instala por USB una build con
+  anuncios falsos de 1 s: sale el «continuar con anuncio», el intersticial al salir y los niveles en el logcat.
+- **Qué hace la capa**: los anuncios del juego (`StorePlatform.ShowRewarded` / `ShowInterstitial`) van al adaptador; cada
+  evento de `Analytics.Log` también. `game_start` / `game_end` del modo Normal se convierten en nivel empezado / terminado
+  (cada partida es un nivel, numerado desde 1; terminar por tiempo = completado, abandonar = fallado). La frecuencia de
+  intersticiales la decide el SDK del publisher.
+- **Integrar un SDK** (cuando un publisher acepte la prueba): importar su paquete, abrir su adaptador y rellenar los TODO
+  (iniciar, nivel empezado, nivel terminado, intersticial, bonificado), cada llamada dentro de `#if KP_PUB_<PUBLISHER>`.
+  Nada más del juego cambia. Sin rellenar, la build funciona como el APK actual (sin anuncios).
