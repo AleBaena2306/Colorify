@@ -19,7 +19,7 @@ namespace Colorify.EditorTools
     //       3. Lo que ya esté puesto en Player Settings > Publishing Settings en esta sesión de Unity.
     //   · versionCode automático y siempre creciente: minutos desde el 1/1/2026 (UTC). No hay que tocarlo a mano y
     //     dos builds nunca repiten número. El nombre de versión es Player Settings > Version (bundleVersion).
-    //   · API objetivo 36 (Android 16), obligatoria en Google Play para apps nuevas y actualizaciones desde el
+    //   · API mínima 24 (la exige la protección automática de Play) y API objetivo 36 (Android 16), obligatoria en Google Play para apps nuevas y actualizaciones desde el
     //     31/08/2026. IL2CPP con ARMv7 + ARM64 (Play exige 64 bits; ARMv7 cubre móviles antiguos de testers).
     //   · Icono: Assets/Colorify/Art/AppIcon (icono normal y adaptativo con fondo y primer plano).
     //   · Sin SDK de publisher ni anuncios (ningún símbolo KP_PUB_*). El online y el ranking funcionan igual que en
@@ -30,6 +30,7 @@ namespace Colorify.EditorTools
     {
         private const string Title = "COLORIFY · Google Play";
         private const int TargetApi = 36;
+        private const int MinApi = 24;
         private const string IconFolder = "Assets/Colorify/Art/AppIcon/";
         private static readonly DateTime VersionEpoch = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -74,7 +75,7 @@ namespace Colorify.EditorTools
             if (!EditorUtility.DisplayDialog(Title,
                     $"Se va a compilar el AAB para Google Play:\n\n" +
                     $"• Versión {version} (versionCode {versionCode})\n" +
-                    $"• API objetivo {TargetApi}, IL2CPP, ARMv7 + ARM64\n" +
+                    $"• API objetivo {TargetApi}, mínima {MinApi}, IL2CPP, ARMv7 + ARM64\n" +
                     $"• Firma: {Path.GetFileName(signing.keystore)} · alias «{signing.alias}» ({signingSource})\n\n" +
                     "Tarda varios minutos." +
                     (needsSwitch ? "\n\nAntes se cambia la plataforma a Android (Unity reimporta los assets). " +
@@ -103,6 +104,9 @@ namespace Colorify.EditorTools
                 PlayerSettings.SetScriptingBackend(android, ScriptingImplementation.IL2CPP);
                 PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARMv7 | AndroidArchitecture.ARM64;
                 PlayerSettings.Android.targetSdkVersion = (AndroidSdkVersions)TargetApi;
+                // La protección automática de Play (Play Auto Protect) exige minSdk 24 o más
+                if ((int)PlayerSettings.Android.minSdkVersion < MinApi)
+                    PlayerSettings.Android.minSdkVersion = (AndroidSdkVersions)MinApi;
                 PlayerSettings.Android.bundleVersionCode = versionCode;
                 PlayerSettings.Android.useCustomKeystore = true;
                 PlayerSettings.Android.keystoreName = signing.keystore;
