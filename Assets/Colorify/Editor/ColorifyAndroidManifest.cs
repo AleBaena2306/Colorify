@@ -7,10 +7,10 @@ using UnityEngine;
 
 namespace Colorify.EditorTools
 {
-    // Builds de Android: Unity declara android.hardware.screen.portrait como obligatoria por tener la orientación
-    // fija en vertical. Google Play avisa de que eso deja fuera tablets, Chromebooks, Google Play Games en PC y
+    // Builds de Android: con la orientación fija en vertical, Google Play deduce que android.hardware.screen.portrait
+    // es obligatoria (Unity no la declara). Google Play avisa de que eso deja fuera tablets, Chromebooks, Google Play Games en PC y
     // Android XR. El juego funciona igual en esos dispositivos (se ve en vertical), así que se marca como opcional
-    // (android:required="false") en los manifiestos que genera Unity, antes de que Gradle compile.
+    // (android:required="false") de forma explícita en el manifiesto que genera Unity, antes de que Gradle compile.
     public class ColorifyAndroidManifest : IPostGenerateGradleAndroidProject
     {
         public int callbackOrder => 100;
@@ -30,12 +30,17 @@ namespace Colorify.EditorTools
                 if (!File.Exists(file)) continue;
                 string xml = File.ReadAllText(file);
                 var tag = new Regex("<uses-feature[^>]*android:name=\"" + Regex.Escape(Feature) + "\"[^>]*/>");
-                if (!tag.IsMatch(xml)) continue;
-                string fixedXml = tag.Replace(xml, m =>
-                {
-                    string t = Regex.Replace(m.Value, "\\s*android:required=\"[^\"]*\"", "");
-                    return t.Replace("/>", " android:required=\"false\" />");
-                });
+                string fixedXml;
+                if (tag.IsMatch(xml))
+                    fixedXml = tag.Replace(xml, m =>
+                    {
+                        string t = Regex.Replace(m.Value, "\\s*android:required=\"[^\"]*\"", "");
+                        return t.Replace("/>", " android:required=\"false\" />");
+                    });
+                else if (xml.Contains("android:screenOrientation=\"portrait\"") && xml.Contains("<application"))
+                    // Unity no la declara, pero Play la deduce de la orientación vertical: hay que declararla opcional
+                    fixedXml = xml.Replace("<application", "<uses-feature android:name=\"" + Feature + "\" android:required=\"false\" />\n  <application");
+                else continue;
                 if (fixedXml == xml) continue;
                 File.WriteAllText(file, fixedXml);
                 Debug.Log($"[AndroidManifest] {Feature} marcada como opcional en {file}");
