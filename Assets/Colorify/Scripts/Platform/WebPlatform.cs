@@ -14,7 +14,7 @@ namespace Colorify
     // Analítica: eventos estándar (game_start / game_end) y los propios del juego.
     // Web: puente KP_LogEvent → window.kpAnalytics(nombre, json), que define la página del portfolio
     //      (si no existe todavía, no se envía nada). Editor: se escriben en la consola.
-    // Android: cada evento se reenvía también al SDK del publisher móvil, si la build lleva uno
+    // Android: cada evento va a GameAnalytics (KovusPride.Analytics.GameAnalyticsBridge) y al SDK del publisher móvil, si la build lleva uno
     //          (KovusPride.Publishing.Mobile.PublisherSdk; game_start/game_end del modo Normal = nivel empezado/terminado).
     public static class Analytics
     {
@@ -43,6 +43,7 @@ namespace Colorify
 #if UNITY_WEBGL && !UNITY_EDITOR
                 KP_LogEvent(name, json);
 #endif
+                KovusPride.Analytics.GameAnalyticsBridge.Event(name, parameters);   // Android con GameAnalytics
                 if (KovusPride.Publishing.Mobile.PublisherSdk.Active)
                 {
                     var forPublisher = new Dictionary<string, object>();

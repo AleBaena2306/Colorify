@@ -37,3 +37,7 @@ Thumbs.db
 
 # Vídeos sin montar de las fichas de portales
 Publishing/store/video/raw-*.mp4
+
+# Claves de GameAnalytics: solo durante las builds de Android (el repositorio es público)
+/Assets/Resources/GameAnalytics/
+/Assets/Resources/GameAnalytics.meta

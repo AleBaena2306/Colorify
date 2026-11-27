@@ -1,0 +1,25 @@
+{
+    "name": "KovusPride.GameAnalytics.Editor",
+    "rootNamespace": "KovusPride.Analytics.EditorTools",
+    "references": [
+        "GameAnalyticsSDK",
+        "KovusPride.GameAnalytics"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.gameanalytics.sdk",
+            "expression": "8.0.0",
+            "define": "KP_GAMEANALYTICS"
+        }
+    ],
+    "noEngineReferences": false
+}
